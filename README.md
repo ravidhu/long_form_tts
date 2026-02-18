@@ -149,6 +149,10 @@ llm = MLXLLM(model="Qwen/Qwen3-14B-MLX-4bit")
 
 Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
+## Author
+
+**Ravidhu Dissanayake** — [LinkedIn](https://www.linkedin.com/in/ravidhu/) · [GitHub](https://github.com/ravidhu)
+
 ## License
 
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.

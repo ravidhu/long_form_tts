@@ -5,7 +5,7 @@ description = "Convert PDFs and web articles into audiobooks or two-speaker podc
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.11"
-authors = [{ name = "Ravidhu", email = "ravidhu.dissa@gmail.com" }]
+authors = [{ name = "Ravidhu Dissanayake", email = "ravidhu.dissa@gmail.com" }]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
@@ -41,6 +41,7 @@ Homepage = "https://github.com/ravidhu/long_form_tts"
 Repository = "https://github.com/ravidhu/long_form_tts"
 Documentation = "https://github.com/ravidhu/long_form_tts/tree/main/docs"
 Issues = "https://github.com/ravidhu/long_form_tts/issues"
+LinkedIn = "https://www.linkedin.com/in/ravidhu/"
 
 [project.optional-dependencies]
 # Pinned: mlx-audio >=0.3 requires transformers==5.0.0rc3 (pre-release),
@@ -64,8 +65,4 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM"]
 ignore = ["E402"]
 
 [tool.ruff.lint.isort]
-known-first-party = [
-    "shared",
-    "audiobook",
-    "podcast",
-]
+known-first-party = ["shared", "audiobook", "podcast"]
