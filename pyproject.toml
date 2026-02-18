@@ -1,0 +1,71 @@
+[project]
+name = "long_form_tts"
+version = "0.1.0"
+description = "Convert PDFs and web articles into audiobooks or two-speaker podcasts — fully local, no cloud APIs. Runs on Apple Silicon with Ollama/MLX LLMs and Kokoro/Chatterbox TTS."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+authors = [{ name = "Ravidhu", email = "ravidhu.dissa@gmail.com" }]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+dependencies = [
+    "pymupdf4llm",
+    "soundfile",
+    "numpy",
+    "requests",
+    "pydub",
+    "docling",
+    "ipywidgets>=8.1.8",
+    "kokoro>=0.9.4",
+    "pip",
+    "ipykernel>=7.2.0",
+    "jupyter-client>=8.8.0",
+    "jupyter-core>=5.9.1",
+    "sox>=1.5.0",
+    "trafilatura",
+]
+
+[project.urls]
+Homepage = "https://github.com/ravidhu/long_form_tts"
+Repository = "https://github.com/ravidhu/long_form_tts"
+Documentation = "https://github.com/ravidhu/long_form_tts/tree/main/docs"
+Issues = "https://github.com/ravidhu/long_form_tts/issues"
+
+[project.optional-dependencies]
+# Pinned: mlx-audio >=0.3 requires transformers==5.0.0rc3 (pre-release),
+# which conflicts with docling's huggingface-hub<1 pin.
+mlx = ["mlx-audio==0.2.10"]
+torch = ["torch", "transformers>=4.55", "kokoro>=0.9"]
+
+
+[dependency-groups]
+dev = ["pytest", "scikit-image", "ruff", "pre-commit"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = ["E402"]
+
+[tool.ruff.lint.isort]
+known-first-party = [
+    "shared",
+    "audiobook",
+    "podcast",
+]

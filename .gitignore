@@ -1,0 +1,35 @@
+# Pipeline output (audio, sections, dialogue, logs)
+output/
+
+# Input PDFs (user-provided, not tracked)
+inputs/
+
+# Python
+__pycache__/
+*.egg-info/
+*.pyc
+
+# Virtual environment
+.venv/
+
+# Audio files (generated)
+*.wav
+*.mp3
+
+# Type checking / linting cache
+.mypy_cache/
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store
+
+# HuggingFace model cache (if downloaded locally)
+*.safetensors
+*.gguf
+
+# IDE
+.idea/
+.vscode/
