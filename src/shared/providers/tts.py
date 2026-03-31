@@ -48,6 +48,12 @@ class KokoroTTS:
     speeds: tuple[float, ...] | None = None  # per-voice speeds; overrides ``speed``
 
     def __post_init__(self):
+        """Resolve voices from lang (or infer lang from voices).
+
+        Called automatically by @dataclass after __init__. Can also be called
+        manually after mutating fields (e.g. changing lang via CLI override) —
+        set voices=None first so this method re-resolves from the new lang.
+        """
         if self.voices is None:
             lang = self.lang or "en"
             if lang not in KOKORO_VOICE_PRESETS:
@@ -56,7 +62,15 @@ class KokoroTTS:
                     f"Available: {list(KOKORO_VOICE_PRESETS.keys())}. "
                     f"Set voices=(...) explicitly."
                 )
-            self.voices = KOKORO_VOICE_PRESETS[lang]
+            preset = KOKORO_VOICE_PRESETS[lang]
+            if len(preset) == 1:
+                # Single-voice language: duplicate for podcast two-speaker mode,
+                # differentiate speakers via slightly different speeds.
+                self.voices = (preset[0], preset[0])
+                if self.speeds is None:
+                    self.speeds = (self.speed, self.speed * 1.08)
+            else:
+                self.voices = preset
         elif self.lang is None:
             # Infer lang from voice prefix for validation convenience
             self.lang = next(
