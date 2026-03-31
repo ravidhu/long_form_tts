@@ -87,6 +87,20 @@ parser.add_argument(
     help="Render only specific segments: intro, outro, or 1-based section numbers. "
          "Comma-separated, ranges supported. Example: --only intro,1-3,outro",
 )
+# LLM overrides
+parser.add_argument("--model", default=None, help="Ollama model name (e.g. qwen3:14b)")
+parser.add_argument("--temperature", type=float, default=None, help="LLM temperature")
+# TTS overrides
+parser.add_argument("--voice1", default=None, help="Speaker 1 TTS voice (e.g. bf_emma)")
+parser.add_argument("--voice2", default=None, help="Speaker 2 TTS voice (e.g. bm_george)")
+parser.add_argument("--speed", type=float, default=None, help="TTS playback speed (both speakers)")
+# Dialogue overrides
+parser.add_argument("--format", default=None, choices=["two_hosts", "host_guest"],
+                    help="Dialogue format")
+parser.add_argument("--voice1name", default=None, help="Speaker 1 name")
+parser.add_argument("--voice2name", default=None, help="Speaker 2 name")
+parser.add_argument("--duration", type=int, default=None, help="Target duration in minutes")
+parser.add_argument("--segment-words", type=int, default=None, help="Words per segment (~8min at 150wpm)")
 args = parser.parse_args()
 output_dir = args.output
 
@@ -103,8 +117,40 @@ if args.source_lang:
     config.dialogue.source_lang = args.source_lang
 if args.target_lang:
     config.dialogue.target_lang = args.target_lang
-    if hasattr(config.tts, "lang"):
+    if isinstance(config.tts, KokoroTTS):
         config.tts.lang = args.target_lang
+        config.tts.voices = None  # reset so __post_init__ picks lang-appropriate voices
+        config.tts.__post_init__()
+
+# Override LLM settings from CLI
+if args.model and isinstance(config.llm, OllamaLLM):
+    config.llm.model = args.model
+    from configs.common import MODELS
+    if args.model in MODELS:
+        config.llm.num_ctx = MODELS[args.model]["context"]
+if args.temperature is not None:
+    config.llm.temperature = args.temperature
+
+# Override TTS settings from CLI
+if (args.voice1 or args.voice2) and hasattr(config.tts, "voices"):
+    v1 = args.voice1 or (config.tts.voices[0] if config.tts.voices else "bf_emma")
+    v2 = args.voice2 or (config.tts.voices[1] if len(config.tts.voices) > 1 else "bm_george")
+    config.tts.voices = (v1, v2)
+if args.speed is not None and hasattr(config.tts, "speed"):
+    config.tts.speed = args.speed
+    config.tts.speeds = None  # clear per-voice speeds when global speed is set
+
+# Override dialogue settings from CLI
+if args.format:
+    config.dialogue.format = args.format
+if args.voice1name:
+    config.dialogue.speaker1_name = args.voice1name
+if args.voice2name:
+    config.dialogue.speaker2_name = args.voice2name
+if args.duration is not None:
+    config.dialogue.target_duration_min = args.duration
+if args.segment_words is not None:
+    config.dialogue.segment_target_words = args.segment_words
 
 if input_source and input_source.kind == "pdf" and not os.path.isfile(input_source.path):
     parser.error(f"Input file not found: {input_source.path}")
@@ -112,6 +158,7 @@ if input_source and input_source.kind == "pdf" and not os.path.isfile(input_sour
 os.makedirs(output_dir, exist_ok=True)
 log_path = os.path.join(output_dir, f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
 sys.stdout = TeeLogger(log_path)
+sys.stderr = TeeLogger(log_path, stream=sys.stderr)
 
 sections_dir = os.path.join(output_dir, "sections")
 os.makedirs(sections_dir, exist_ok=True)

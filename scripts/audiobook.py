@@ -36,7 +36,7 @@ from configs.audiobook import (  # noqa: E402
     PDF_PARSER_BACKEND,
     config,
 )
-from configs.common import TeeLogger, fmt_time, resolve_input  # noqa: E402
+from configs.common import MODELS, TeeLogger, fmt_time, resolve_input  # noqa: E402
 
 from audiobook import (  # noqa: E402
     SAMPLE_RATE,
@@ -51,7 +51,7 @@ from shared.pdf_parser import (  # noqa: E402
     resolve_content_pages,
     resolve_content_sections,
 )
-from shared.providers import OllamaLLM, ollama_preflight  # noqa: E402
+from shared.providers import KokoroTTS, OllamaLLM, ollama_preflight  # noqa: E402
 from shared.web_parser import fetch_url_content, split_by_headings  # noqa: E402
 
 parser = argparse.ArgumentParser(description="Audiobook pipeline — PDF/URL to audio")
@@ -72,6 +72,14 @@ parser.add_argument(
     "--target-lang", default=None,
     help=f"Target language code (default: {config.narration.target_lang} from config)",
 )
+# LLM overrides
+parser.add_argument("--model", default=None, help="Ollama model name (e.g. qwen3:14b)")
+parser.add_argument("--temperature", type=float, default=None, help="LLM temperature")
+# TTS overrides
+parser.add_argument("--voice", default=None, help="TTS voice name (e.g. af_heart)")
+parser.add_argument("--speed", type=float, default=None, help="TTS playback speed")
+# Pipeline overrides
+parser.add_argument("--max-workers", type=int, default=None, help="Parallel LLM requests")
 args = parser.parse_args()
 output_dir = args.output
 
@@ -88,8 +96,28 @@ if args.source_lang:
     config.narration.source_lang = args.source_lang
 if args.target_lang:
     config.narration.target_lang = args.target_lang
-    if hasattr(config.tts, "lang"):
+    if isinstance(config.tts, KokoroTTS):
         config.tts.lang = args.target_lang
+        config.tts.voices = None
+        config.tts.__post_init__()
+
+# Override LLM settings from CLI
+if args.model and isinstance(config.llm, OllamaLLM):
+    config.llm.model = args.model
+    if args.model in MODELS:
+        config.llm.num_ctx = MODELS[args.model]["context"]
+if args.temperature is not None:
+    config.llm.temperature = args.temperature
+
+# Override TTS settings from CLI
+if args.voice and hasattr(config.tts, "voices"):
+    config.tts.voices = (args.voice,)
+if args.speed is not None and hasattr(config.tts, "speed"):
+    config.tts.speed = args.speed
+
+# Override pipeline settings from CLI
+if args.max_workers is not None:
+    config.narration.max_workers = args.max_workers
 
 if input_source and input_source.kind == "pdf" and not os.path.isfile(input_source.path):
     parser.error(f"Input file not found: {input_source.path}")
@@ -97,6 +125,7 @@ if input_source and input_source.kind == "pdf" and not os.path.isfile(input_sour
 os.makedirs(output_dir, exist_ok=True)
 log_path = os.path.join(output_dir, f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
 sys.stdout = TeeLogger(log_path)
+sys.stderr = TeeLogger(log_path, stream=sys.stderr)
 
 sections_dir = os.path.join(output_dir, "sections")
 os.makedirs(sections_dir, exist_ok=True)
