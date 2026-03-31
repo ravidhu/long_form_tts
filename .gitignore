@@ -33,3 +33,11 @@ __pycache__/
 # IDE
 .idea/
 .vscode/
+.claude/
+
+# Electron app
+.setup-complete
+app/node_modules/
+app/out/
+app/release/
+tmp

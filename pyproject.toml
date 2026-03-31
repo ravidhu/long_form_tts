@@ -1,6 +1,6 @@
 [project]
 name = "long_form_tts"
-version = "0.1.0"
+version = "0.2.0"
 description = "Convert PDFs and web articles into audiobooks or two-speaker podcasts — fully local, no cloud APIs. Runs on Apple Silicon with Ollama/MLX LLMs and Kokoro/Chatterbox TTS."
 readme = "README.md"
 license = { text = "MIT" }
