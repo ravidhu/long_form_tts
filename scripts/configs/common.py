@@ -46,9 +46,9 @@ def fmt_time(seconds):
 
 
 class TeeLogger:
-    """Duplicate stdout to a log file."""
-    def __init__(self, log_path):
-        self.terminal = sys.stdout
+    """Duplicate a stream (stdout or stderr) to a log file."""
+    def __init__(self, log_path, stream=None):
+        self.terminal = stream or sys.stdout
         self.log = open(log_path, "a", buffering=1)  # noqa: SIM115
     def write(self, msg):
         self.terminal.write(msg)
