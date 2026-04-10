@@ -39,7 +39,9 @@ MAX_TOC_LEVEL = 1       # 1 = Parts/Chapters, 2 = sub-chapters
 
 
 def fmt_time(seconds):
-    """Format seconds as HH:MM:SS."""
+    """Format seconds as HH:MM:SS or as sub-second when < 1s."""
+    if seconds < 1:
+        return f"{seconds:.2f}s"
     h, remainder = divmod(int(seconds), 3600)
     m, s = divmod(remainder, 60)
     return f"{h:02d}:{m:02d}:{s:02d}"

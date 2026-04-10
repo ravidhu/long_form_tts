@@ -177,11 +177,17 @@ def resolve_content_sections(
             end_page=content_range.end_page,
         )]
 
-    # Build initial sections
+    # Build initial sections — skip parent entries whose first child
+    # starts on the same page (they'd produce duplicate page content).
     sections = []
     for i, entry in enumerate(content_entries):
         if i + 1 < len(content_entries):
-            end_page = max(entry.page, content_entries[i + 1].page - 1)
+            nxt = content_entries[i + 1]
+            # Parent shares its start page with a deeper child → skip it,
+            # the child section will cover that page's content.
+            if nxt.page == entry.page and nxt.level > entry.level:
+                continue
+            end_page = max(entry.page, nxt.page - 1)
         else:
             end_page = content_range.end_page
         sections.append(TOCSection(

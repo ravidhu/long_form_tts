@@ -29,6 +29,9 @@ BACK_MATTER_PATTERNS = [
     r"^about\s*the\s*authors?$",
     r"^colophon$",
     r"^appendix",
+    r"appendix",
+    r"^acknowledg[e]?ments?$",
+    r"^acknowledg[e]?ments?\s+and\b",
 ]
 
 # These are content even though they appear before chapter 1
@@ -36,7 +39,6 @@ PREAMBLE_PATTERNS = [
     r"^foreword",
     r"^preface",
     r"^introduction$",
-    r"^acknowledgments?$",
 ]
 
 

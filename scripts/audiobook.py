@@ -136,6 +136,58 @@ def _make_section(title, content_text):
     return Section.from_content(title, content_text, language=config.narration.target_lang)
 
 
+def _trim_shared_page(md: str, current_title: str, next_title: str | None) -> str:
+    """Trim extracted markdown when two sections share the same page(s).
+
+    When consecutive TOC entries fall on the same page, pdf_to_markdown
+    extracts the entire page for both.  This function keeps only the
+    portion belonging to *current_title* by cutting at the heading that
+    marks the start of *next_title*.
+    """
+    if next_title is None:
+        return md
+
+    import re
+
+    # Extract the leading section number (e.g. "6.1" from "6.1 Implications...")
+    # and the first few significant words for matching.
+    num_match = re.match(r"^([\d.]+)\s+(.*)", next_title)
+    if num_match:
+        sec_num = num_match.group(1)
+        # First 4 words of the title text (PDF may truncate long titles)
+        words = num_match.group(2).split()[:4]
+        title_start = r"\s+".join(re.escape(w) for w in words)
+    else:
+        sec_num = None
+        words = next_title.split()[:4]
+        title_start = r"\s+".join(re.escape(w) for w in words)
+
+    patterns = []
+    if sec_num:
+        esc_num = re.escape(sec_num)
+        # **6.1** **Implications for Designing...  (bold-formatted headings)
+        patterns.append(re.compile(
+            rf"^\**{esc_num}\**\s+\**{title_start}", re.MULTILINE
+        ))
+        # ## 6.1 Implications for Designing...  (markdown headings)
+        patterns.append(re.compile(
+            rf"^#{1,6}\s+{esc_num}\s+{title_start}", re.MULTILINE
+        ))
+    # Plain title match (first few words)
+    patterns.append(re.compile(rf"^#{1,6}\s+\**{title_start}", re.MULTILINE))
+    patterns.append(re.compile(rf"^\**{title_start}\**\s*$", re.MULTILINE))
+
+    earliest = len(md)
+    for pat in patterns:
+        m = pat.search(md)
+        if m and m.start() < earliest:
+            earliest = m.start()
+
+    if earliest < len(md):
+        return md[:earliest].strip()
+    return md
+
+
 # =============================================================================
 # Stage 1–2: Content extraction (PDF branch vs URL branch)
 # =============================================================================
@@ -292,7 +344,14 @@ else:
             pages = list(range(toc_sec.start_page, toc_sec.end_page + 1))
             md = pdf_to_markdown(pdf_file, backend=PDF_PARSER_BACKEND, pages=pages)
 
-            content_text = md.strip()
+            # Trim shared-page overlap: if the next section starts on
+            # the same page as this section's end, cut at its heading.
+            next_title = None
+            if i + 1 < len(toc_sections):
+                nxt = toc_sections[i + 1]
+                if nxt.start_page <= toc_sec.end_page:
+                    next_title = nxt.title
+            content_text = _trim_shared_page(md, toc_sec.title, next_title).strip()
             chars = len(content_text)
             tokens_est = chars // 4
 
@@ -332,7 +391,7 @@ narr = config.narration
 def adapt_and_save(idx_section):
     idx, section = idx_section
     t0 = time.time()
-    narration = adapt_narration_section(
+    narration, llm_calls = adapt_narration_section(
         section, llm=config.llm,
         source_lang=narr.source_lang, target_lang=narr.target_lang,
     )
@@ -340,7 +399,7 @@ def adapt_and_save(idx_section):
     narr_path = os.path.join(narrations_dir, f"{idx:02d}_narration.txt")
     with open(narr_path, "w") as f:
         f.write(narration)
-    return idx, section.title, narr_path, len(narration), elapsed
+    return idx, section.title, narr_path, len(narration), elapsed, llm_calls
 
 
 narrations = [None] * len(sections)
@@ -373,11 +432,12 @@ if to_adapt:
     with ThreadPoolExecutor(max_workers=narr.max_workers) as pool:
         futures = {pool.submit(adapt_and_save, (i, sections[i])): i for i in to_adapt}
         for future in as_completed(futures):
-            idx, title, path, nchars, elapsed = future.result()
+            idx, title, path, nchars, elapsed, llm_calls = future.result()
             narrations[idx] = Path(path).read_text()
+            mode = f"{llm_calls} LLM calls" if llm_calls else "rule-based"
             print(
                 f"  [{idx+1}/{len(sections)}] {title}"
-                f" → {path} ({nchars} chars, {fmt_time(elapsed)})"
+                f" → {path} ({nchars} chars, {fmt_time(elapsed)}, {mode})"
             )
 
 total_elapsed = time.time() - total_t0

@@ -40,6 +40,11 @@ class TestClassifyEntry:
         ("About the Authors", "back"),
         ("Colophon", "back"),
         ("Appendix A", "back"),
+        ("A Appendix", "back"),
+        ("Acknowledgments", "back"),
+        ("Acknowledgements", "back"),
+        ("Acknowledgment", "back"),
+        ("Acknowledgments and Funding", "back"),
     ])
     def test_back_matter(self, title, expected):
         entry = TOCEntry(level=1, title=title, page=100)
@@ -49,7 +54,6 @@ class TestClassifyEntry:
         ("Foreword", "preamble"),
         ("Preface", "preamble"),
         ("Introduction", "preamble"),
-        ("Acknowledgments", "preamble"),
     ])
     def test_preamble(self, title, expected):
         entry = TOCEntry(level=1, title=title, page=5)

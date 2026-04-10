@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-04-10
+
+### Added
+
+- Hybrid narration pipeline: rule-based preprocessing for paragraphs/headings, LLM only for tables, code, lists, and metadata blocks
+- Block splitter (`blocks.py`) to classify markdown into typed blocks (paragraph, heading, table, code, list, metadata)
+- Deterministic text preprocessor (`preprocess.py`) for markdown stripping, number-to-spoken conversion, and abbreviation expansion
+- Block-specific LLM prompts for table-to-prose, code-to-description, list-to-prose, metadata classification, and translation
+- Stage 3 output now shows "rule-based" or LLM call count per section
+
+### Removed
+
+- Acknowledgments, appendices, and references sections are now classified as back matter and skipped in both audiobook and podcast pipelines
+
+### Fixed
+
+- Duplicate narration content when TOC entries share the same PDF page (parent/child and sibling overlaps)
+- Shared-page trimming in Stage 2 to cut extracted markdown at the next section's heading
+- `fmt_time()` now shows sub-second durations (e.g. `0.35s`) instead of truncating to `00:00:00`
+
+### Changed
+
+- `adapt_narration_section` returns `(str, int)` tuple (narration text + LLM call count)
+- Upgraded docling 2.72→2.86, mlx-lm 0.29→0.31, mlx-audio 0.2.10→0.4.2, transformers 4.57→5.5, huggingface-hub 0.36→1.10
+- Removed mlx-audio version pin (docling >=2.86 relaxed huggingface_hub constraint)
+
 ## [0.2.0] - 2026-03-31
 
 ### Added
