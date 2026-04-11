@@ -4,7 +4,7 @@ output/
 # Input PDFs (user-provided, not tracked)
 inputs/
 
-# User config files (*.example.yaml are tracked)
+# User config files (*.default.yaml are tracked)
 scripts/configs/audiobook.yaml
 scripts/configs/podcast.yaml
 

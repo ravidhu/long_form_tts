@@ -33,7 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from configs.common import (  # noqa: E402
     AUDIOBOOK_CONFIG,
-    AUDIOBOOK_EXAMPLE,
+    AUDIOBOOK_DEFAULT,
     MODELS,
     TeeLogger,
     fmt_time,
@@ -84,14 +84,13 @@ parser.add_argument("--max-workers", type=int, default=None, help="Parallel LLM 
 args = parser.parse_args()
 output_dir = args.output
 
-# Load config from YAML
+# Load config from YAML: --config > audiobook.yaml > audiobook.default.yaml
 config_path = args.config or AUDIOBOOK_CONFIG
 if not os.path.isfile(config_path):
-    if os.path.isfile(AUDIOBOOK_EXAMPLE):
-        print(f"No config found at {config_path}")
-        print("Copy the example to get started:")
-        print(f"  cp {AUDIOBOOK_EXAMPLE} {AUDIOBOOK_CONFIG}")
-        sys.exit(1)
+    if args.config:
+        parser.error(f"Config file not found: {config_path}")
+    config_path = AUDIOBOOK_DEFAULT
+if not os.path.isfile(config_path):
     parser.error(f"Config file not found: {config_path}")
 
 loaded = load_audiobook_config(config_path)

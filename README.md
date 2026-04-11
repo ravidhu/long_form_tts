@@ -109,8 +109,8 @@ The LLM generates narration scripts / podcast dialogues from source text. Either
 Copy the example config and edit it:
 
 ```bash
-cp scripts/configs/audiobook.example.yaml scripts/configs/audiobook.yaml
-cp scripts/configs/podcast.example.yaml scripts/configs/podcast.yaml
+cp scripts/configs/audiobook.default.yaml scripts/configs/audiobook.yaml
+cp scripts/configs/podcast.default.yaml scripts/configs/podcast.yaml
 ```
 
 Or pass a custom config: `--config path/to/my_config.yaml`

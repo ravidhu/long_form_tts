@@ -36,7 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from configs.common import (  # noqa: E402
     PODCAST_CONFIG,
-    PODCAST_EXAMPLE,
+    PODCAST_DEFAULT,
     TeeLogger,
     fmt_time,
     resolve_input,
@@ -104,14 +104,13 @@ parser.add_argument("--segment-words", type=int, default=None, help="Words per s
 args = parser.parse_args()
 output_dir = args.output
 
-# Load config from YAML
+# Load config from YAML: --config > podcast.yaml > podcast.default.yaml
 config_path = args.config or PODCAST_CONFIG
 if not os.path.isfile(config_path):
-    if os.path.isfile(PODCAST_EXAMPLE):
-        print(f"No config found at {config_path}")
-        print("Copy the example to get started:")
-        print(f"  cp {PODCAST_EXAMPLE} {PODCAST_CONFIG}")
-        sys.exit(1)
+    if args.config:
+        parser.error(f"Config file not found: {config_path}")
+    config_path = PODCAST_DEFAULT
+if not os.path.isfile(config_path):
     parser.error(f"Config file not found: {config_path}")
 
 loaded = load_podcast_config(config_path)

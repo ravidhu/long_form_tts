@@ -14,8 +14,8 @@ from .loader import MODELS  # noqa: E402, F401
 CONFIGS_DIR = Path(__file__).parent
 AUDIOBOOK_CONFIG = CONFIGS_DIR / "audiobook.yaml"
 PODCAST_CONFIG = CONFIGS_DIR / "podcast.yaml"
-AUDIOBOOK_EXAMPLE = CONFIGS_DIR / "audiobook.example.yaml"
-PODCAST_EXAMPLE = CONFIGS_DIR / "podcast.example.yaml"
+AUDIOBOOK_DEFAULT = CONFIGS_DIR / "audiobook.default.yaml"
+PODCAST_DEFAULT = CONFIGS_DIR / "podcast.default.yaml"
 
 
 def fmt_time(seconds):

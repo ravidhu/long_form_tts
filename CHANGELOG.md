@@ -22,7 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - Stage 3 output now shows "rule-based" or LLM call count per section
 - YAML-based configuration (`audiobook.yaml`, `podcast.yaml`) replacing Python config files
 - `--config` CLI flag to pass a custom YAML config file
-- Example configs (`audiobook.example.yaml`, `podcast.example.yaml`)
+- Default configs (`audiobook.default.yaml`, `podcast.default.yaml`)
 
 ### Removed
 
