@@ -101,7 +101,7 @@ See [Translation](../backends/translation.md) for cross-language workflows and e
    - Headers become spoken transitions ("Let's now turn our attention to...")
    - Pause markers are inserted: `[PAUSE_SHORT]`, `[PAUSE_MEDIUM]`, `[PAUSE_LONG]`
 3. For French output, English technical terms get phonetic French spelling so the TTS pronounces them correctly (e.g. "Hive" becomes "Haive")
-4. Sections are processed in parallel via `ThreadPoolExecutor` (`max_workers` is set in [`NarrationConfig`](../scripts/configs/audiobook.py), default `1`)
+4. Sections are processed in parallel via `ThreadPoolExecutor` (`narration.max_workers` in `audiobook.yaml`, default `1`)
 
 **Supported language pairs**: `en→en`, `fr→fr`, `en→fr`, `fr→en`
 

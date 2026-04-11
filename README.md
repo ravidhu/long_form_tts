@@ -106,14 +106,20 @@ The LLM generates narration scripts / podcast dialogues from source text. Either
 
 ## Configuration
 
-Edit `scripts/configs/audiobook.py` or `scripts/configs/podcast.py` to swap LLM backends, TTS engines, voices, languages, and pipeline parameters. Backend switching is a one-line change:
+Copy the example config and edit it:
 
-```python
-# Ollama (any model served by Ollama)
-llm = OllamaLLM(model="qwen3:14b")
+```bash
+cp scripts/configs/audiobook.example.yaml scripts/configs/audiobook.yaml
+cp scripts/configs/podcast.example.yaml scripts/configs/podcast.yaml
+```
 
-# MLX (Apple Silicon local — HuggingFace MLX weights)
-llm = MLXLLM(model="Qwen/Qwen3-14B-MLX-4bit")
+Or pass a custom config: `--config path/to/my_config.yaml`
+
+```yaml
+# audiobook.yaml — switch LLM backend in one line
+llm:
+  backend: mlx                        # or: ollama
+  model: Qwen/Qwen3-14B-MLX-4bit     # or: qwen3:14b
 ```
 
 ## Documentation

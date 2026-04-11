@@ -1,0 +1,39 @@
+# Audiobook pipeline configuration
+# ─────────────────────────────────────────────────────────────────────
+
+# PDF parsing
+pdf_parser: pymupdf         # pymupdf | docling
+max_toc_level: 2            # 1 = Parts/Chapters, 2 = sub-chapters
+
+# Languages
+source_lang: en             # language of the source PDF/URL
+target_lang: en             # language for the audiobook output
+
+# Narration
+narration:
+  max_workers: 1            # parallel LLM requests — tune to your hardware
+
+# LLM backend — uncomment the one you want to use
+llm:
+  # ── MLX (Apple Silicon, local) ──
+  backend: mlx
+  model: Qwen/Qwen3-14B-MLX-4bit
+  # max_tokens: 8192
+  # temperature: 0.7
+
+  # ── Ollama (local server) ──
+  # backend: ollama
+  # model: qwen3:14b
+  # url: http://localhost:11434
+  # num_ctx: 40960
+  # temperature: 0.3
+
+# TTS backend — auto-selected from target_lang if omitted
+# tts:
+#   backend: kokoro
+#   speed: 0.95
+#   voices: [af_heart]
+
+  # ── Chatterbox (voice cloning) ──
+  # backend: chatterbox
+  # audio_prompts: [voices/narrator.wav]

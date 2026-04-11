@@ -99,73 +99,90 @@ Short flags `-i` and `-o` are also available. `--input` is required for fresh ru
 
 ## Configuration
 
-Both pipelines use a composable config system. Settings are in `scripts/configs/`:
+Both pipelines use YAML config files. Copy the example and edit:
 
-- `scripts/configs/common.py` — shared defaults (`PDF_PARSER_BACKEND`, `MAX_TOC_LEVEL`)
-- `scripts/configs/audiobook.py` — audiobook-specific (voice, language, LLM, TTS)
-- `scripts/configs/podcast.py` — podcast-specific (dialogue format, speakers, LLM, TTS)
-
-### Audiobook example
-
-```python
-from shared.providers import OllamaLLM, KokoroTTS
-from audiobook import AudiobookConfig, NarrationConfig
-
-config = AudiobookConfig(
-    narration=NarrationConfig(source_lang="en", target_lang="fr"),
-    llm=OllamaLLM(model="qwen3:14b"),
-    tts=KokoroTTS(voices=("ff_siwis",), speed=0.95),
-)
+```bash
+cp scripts/configs/audiobook.example.yaml scripts/configs/audiobook.yaml
+cp scripts/configs/podcast.example.yaml scripts/configs/podcast.yaml
 ```
 
-### Podcast example
+Or pass a custom config with `--config path/to/custom.yaml`.
 
-```python
-from shared.providers import OllamaLLM, KokoroTTS
-from podcast import PodcastConfig, DialogueConfig
+### Audiobook example (`audiobook.yaml`)
 
-config = PodcastConfig(
-    dialogue=DialogueConfig(
-        format="two_hosts",  # or "host_guest" — see [Dialogue formats](../reference/api_reference.md#dialogue-formats)
-        speaker1_name="Alex",
-        speaker2_name="Sam",
-    ),
-    llm=OllamaLLM(model="qwen3:14b"),
-    tts=KokoroTTS(voices=("af_heart", "am_michael")),
-)
+```yaml
+source_lang: en
+target_lang: fr
+
+llm:
+  backend: ollama
+  model: qwen3:14b
+
+tts:
+  backend: kokoro
+  voices: [ff_siwis]
+  speed: 0.95
+```
+
+### Podcast example (`podcast.yaml`)
+
+```yaml
+dialogue:
+  format: two_hosts
+  speaker1_name: Alex
+  speaker2_name: Sam
+
+llm:
+  backend: ollama
+  model: qwen3:14b
+
+tts:
+  backend: kokoro
+  voices: [af_heart, am_michael]
 ```
 
 ### Switching backends
 
-Swap the class to switch backend — no other changes needed:
+Change one line in the YAML:
 
-```python
-# Ollama — with optional tuning params
-llm=OllamaLLM(model="qwen3:14b", num_ctx=40960, top_p=0.9, repeat_penalty=1.1)
+```yaml
+# Ollama (local server)
+llm:
+  backend: ollama
+  model: qwen3:14b
+  # num_ctx: 40960          # optional — auto-filled from known models
 
-# MLX (Apple Silicon local — HuggingFace MLX weights)
-llm=MLXLLM(model="Qwen/Qwen3-14B-MLX-4bit")
+# MLX (Apple Silicon local)
+llm:
+  backend: mlx
+  model: Qwen/Qwen3-14B-MLX-4bit
 ```
 
-When using `OllamaLLM`, the pipeline verifies connectivity and model availability at startup (before any PDF processing). See [API Reference — OllamaLLM](../reference/api_reference.md#ollallm) for all available fields.
+When using `ollama`, the pipeline verifies connectivity and model availability at startup (before any PDF processing). See [API Reference — OllamaLLM](../reference/api_reference.md#ollallm) for all available fields.
 
 Same for TTS:
 
-```python
-tts=KokoroTTS(voices=("af_heart", "am_michael"))      # pick any voice pair
-tts=ChatterboxTTS()                                   # multilingual, voice cloning
+```yaml
+# Kokoro — lightweight, multi-language
+tts:
+  backend: kokoro
+  voices: [af_heart, am_michael]
+
+# Chatterbox — multilingual, voice cloning
+tts:
+  backend: chatterbox
+  audio_prompts: [voices/host.wav, voices/guest.wav]
 ```
 
 ### Other knobs
 
 | Setting | Where | Default | Description |
 |---|---|---|---|
-| `PDF_PARSER_BACKEND` | `configs/common.py` | `"pymupdf"` | PDF extraction backend |
-| `MAX_TOC_LEVEL` | `configs/common.py` | `1` | TOC depth (1=Parts, 2=Chapters) |
-| `max_workers` | `NarrationConfig` | `1` | Parallel LLM requests (audiobook) |
-| `segment_target_words` | `DialogueConfig` | `1200` | Words per podcast segment (~8 min) |
-| `target_duration_min` | `DialogueConfig` | `None` | Optional hint for outline LLM |
-| `inter_section_pause` | Stage 5/7 | `2.0` / `1.5` | Silence between segments (seconds) |
+| `pdf_parser` | YAML root | `pymupdf` | PDF extraction backend (`pymupdf` or `docling`) |
+| `max_toc_level` | YAML root | `1` / `2` | TOC depth (1=Parts, 2=Chapters) |
+| `narration.max_workers` | audiobook YAML | `1` | Parallel LLM requests |
+| `dialogue.segment_target_words` | podcast YAML | `1200` | Words per podcast segment (~8 min) |
+| `dialogue.target_duration_min` | podcast YAML | (none) | Optional hint for outline LLM |
 
 ## Output
 

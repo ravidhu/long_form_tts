@@ -13,10 +13,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - Deterministic text preprocessor (`preprocess.py`) for markdown stripping, number-to-spoken conversion, and abbreviation expansion
 - Block-specific LLM prompts for table-to-prose, code-to-description, list-to-prose, metadata classification, and translation
 - Stage 3 output now shows "rule-based" or LLM call count per section
+- YAML-based configuration (`audiobook.yaml`, `podcast.yaml`) replacing Python config files
+- `--config` CLI flag to pass a custom YAML config file
+- Example configs (`audiobook.example.yaml`, `podcast.example.yaml`)
 
 ### Removed
 
 - Acknowledgments, appendices, and references sections are now classified as back matter and skipped in both audiobook and podcast pipelines
+- Python config files (`scripts/configs/audiobook.py`, `scripts/configs/podcast.py`) replaced by YAML
 
 ### Fixed
 

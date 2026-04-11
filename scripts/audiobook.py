@@ -10,8 +10,9 @@ Usage:
     uv run python scripts/audiobook.py -o output/my_run   # resume (--input not needed)
 
 Configuration:
-    Edit scripts/configs/audiobook.py (narrator voice, language, LLM, TTS)
-    and scripts/configs/common.py (PDF_PARSER_BACKEND, MODELS).
+    cp scripts/configs/audiobook.example.yaml scripts/configs/audiobook.yaml
+    Edit audiobook.yaml (LLM backend, TTS voice, language, pipeline settings).
+    Or pass --config path/to/custom.yaml.
 """
 
 import argparse
@@ -30,13 +31,15 @@ import soundfile as sf
 # Add src/ to Python path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from configs.audiobook import (  # noqa: E402
-    CONTEXT_BUDGET,
-    MAX_TOC_LEVEL,
-    PDF_PARSER_BACKEND,
-    config,
+from configs.common import (  # noqa: E402
+    AUDIOBOOK_CONFIG,
+    AUDIOBOOK_EXAMPLE,
+    MODELS,
+    TeeLogger,
+    fmt_time,
+    resolve_input,
 )
-from configs.common import MODELS, TeeLogger, fmt_time, resolve_input  # noqa: E402
+from configs.loader import load_audiobook_config  # noqa: E402
 
 from audiobook import (  # noqa: E402
     SAMPLE_RATE,
@@ -65,13 +68,11 @@ parser.add_argument(
     help="Output directory (pass an existing dir to resume a partial run)",
 )
 parser.add_argument(
-    "--source-lang", default=None,
-    help=f"Source language code (default: {config.narration.source_lang} from config)",
+    "--config", "-c", default=None,
+    help=f"YAML config file (default: {AUDIOBOOK_CONFIG})",
 )
-parser.add_argument(
-    "--target-lang", default=None,
-    help=f"Target language code (default: {config.narration.target_lang} from config)",
-)
+parser.add_argument("--source-lang", default=None, help="Source language code")
+parser.add_argument("--target-lang", default=None, help="Target language code")
 # LLM overrides
 parser.add_argument("--model", default=None, help="Ollama model name (e.g. qwen3:14b)")
 parser.add_argument("--temperature", type=float, default=None, help="LLM temperature")
@@ -82,6 +83,22 @@ parser.add_argument("--speed", type=float, default=None, help="TTS playback spee
 parser.add_argument("--max-workers", type=int, default=None, help="Parallel LLM requests")
 args = parser.parse_args()
 output_dir = args.output
+
+# Load config from YAML
+config_path = args.config or AUDIOBOOK_CONFIG
+if not os.path.isfile(config_path):
+    if os.path.isfile(AUDIOBOOK_EXAMPLE):
+        print(f"No config found at {config_path}")
+        print("Copy the example to get started:")
+        print(f"  cp {AUDIOBOOK_EXAMPLE} {AUDIOBOOK_CONFIG}")
+        sys.exit(1)
+    parser.error(f"Config file not found: {config_path}")
+
+loaded = load_audiobook_config(config_path)
+config = loaded.config
+CONTEXT_BUDGET = loaded.context_budget
+MAX_TOC_LEVEL = loaded.max_toc_level
+PDF_PARSER_BACKEND = loaded.pdf_parser
 
 # --input is required unless resuming (output dir already has sections/)
 if args.input is None:
@@ -105,7 +122,7 @@ if args.target_lang:
 if args.model and isinstance(config.llm, OllamaLLM):
     config.llm.model = args.model
     if args.model in MODELS:
-        config.llm.num_ctx = MODELS[args.model]["context"]
+        config.llm.num_ctx = MODELS[args.model]
 if args.temperature is not None:
     config.llm.temperature = args.temperature
 

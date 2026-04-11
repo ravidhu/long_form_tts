@@ -13,8 +13,9 @@ Usage:
     uv run python scripts/podcast.py -o output/my_run   # resume (--input not needed)
 
 Configuration:
-    Edit scripts/configs/podcast.py (dialogue format, speakers, LLM, TTS)
-    and scripts/configs/common.py (PDF_PARSER_BACKEND, MODELS).
+    cp scripts/configs/podcast.example.yaml scripts/configs/podcast.yaml
+    Edit podcast.yaml (dialogue format, speakers, LLM, TTS, pipeline settings).
+    Or pass --config path/to/custom.yaml.
 """
 
 import argparse
@@ -33,13 +34,14 @@ import soundfile as sf
 # Add src/ to Python path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from configs.common import TeeLogger, fmt_time, resolve_input  # noqa: E402
-from configs.podcast import (  # noqa: E402
-    CONTEXT_BUDGET,
-    MAX_TOC_LEVEL,
-    PDF_PARSER_BACKEND,
-    config,
+from configs.common import (  # noqa: E402
+    PODCAST_CONFIG,
+    PODCAST_EXAMPLE,
+    TeeLogger,
+    fmt_time,
+    resolve_input,
 )
+from configs.loader import load_podcast_config  # noqa: E402
 
 from podcast import (  # noqa: E402
     PodcastOutline,
@@ -75,13 +77,11 @@ parser.add_argument(
     help="Output directory (pass an existing dir to resume a partial run)",
 )
 parser.add_argument(
-    "--source-lang", default=None,
-    help=f"Source language code (default: {config.dialogue.source_lang} from config)",
+    "--config", "-c", default=None,
+    help=f"YAML config file (default: {PODCAST_CONFIG})",
 )
-parser.add_argument(
-    "--target-lang", default=None,
-    help=f"Target language code (default: {config.dialogue.target_lang} from config)",
-)
+parser.add_argument("--source-lang", default=None, help="Source language code")
+parser.add_argument("--target-lang", default=None, help="Target language code")
 parser.add_argument(
     "--only",
     help="Render only specific segments: intro, outro, or 1-based section numbers. "
@@ -103,6 +103,22 @@ parser.add_argument("--duration", type=int, default=None, help="Target duration 
 parser.add_argument("--segment-words", type=int, default=None, help="Words per segment (~8min at 150wpm)")
 args = parser.parse_args()
 output_dir = args.output
+
+# Load config from YAML
+config_path = args.config or PODCAST_CONFIG
+if not os.path.isfile(config_path):
+    if os.path.isfile(PODCAST_EXAMPLE):
+        print(f"No config found at {config_path}")
+        print("Copy the example to get started:")
+        print(f"  cp {PODCAST_EXAMPLE} {PODCAST_CONFIG}")
+        sys.exit(1)
+    parser.error(f"Config file not found: {config_path}")
+
+loaded = load_podcast_config(config_path)
+config = loaded.config
+CONTEXT_BUDGET = loaded.context_budget
+MAX_TOC_LEVEL = loaded.max_toc_level
+PDF_PARSER_BACKEND = loaded.pdf_parser
 
 # --input is required unless resuming (output dir already has sections/)
 if args.input is None:
@@ -127,7 +143,7 @@ if args.model and isinstance(config.llm, OllamaLLM):
     config.llm.model = args.model
     from configs.common import MODELS
     if args.model in MODELS:
-        config.llm.num_ctx = MODELS[args.model]["context"]
+        config.llm.num_ctx = MODELS[args.model]
 if args.temperature is not None:
     config.llm.temperature = args.temperature
 
