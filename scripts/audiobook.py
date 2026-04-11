@@ -18,12 +18,12 @@ Configuration:
 import argparse
 import logging
 import os
+import re
 import sys
 import time
 
 logging.getLogger("phonemizer").setLevel(logging.ERROR)
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
 from pathlib import Path
 
 import soundfile as sf
@@ -34,10 +34,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from configs.common import (  # noqa: E402
     AUDIOBOOK_CONFIG,
     AUDIOBOOK_DEFAULT,
-    MODELS,
-    TeeLogger,
     fmt_time,
-    resolve_input,
+)
+from configs.cli_arg_parser import (  # noqa: E402
+    add_common_args,
+    apply_common_overrides,
+    print_llm_info,
+    resolve_pipeline,
 )
 from configs.loader import load_audiobook_config  # noqa: E402
 
@@ -48,108 +51,59 @@ from audiobook import (  # noqa: E402
     render_section,
 )
 from shared.audio_assembler import assemble_audiobook  # noqa: E402
+from shared.content_extractor import extract_content  # noqa: E402
 from shared.markdown_parser import Section  # noqa: E402
-from shared.pdf_parser import (  # noqa: E402
-    pdf_to_markdown,
-    resolve_content_pages,
-    resolve_content_sections,
-)
-from shared.providers import KokoroTTS, OllamaLLM, ollama_preflight  # noqa: E402
-from shared.web_parser import fetch_url_content, split_by_headings  # noqa: E402
+
+# =============================================================================
+# CLI setup
+# =============================================================================
 
 parser = argparse.ArgumentParser(description="Audiobook pipeline — PDF/URL to audio")
-parser.add_argument(
-    "--input", "-i", default=None,
-    help="Input PDF file or URL (required unless resuming a partial run)",
-)
-parser.add_argument(
-    "--output", "-o",
-    default=f"output/audiobook_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-    help="Output directory (pass an existing dir to resume a partial run)",
-)
-parser.add_argument(
-    "--config", "-c", default=None,
-    help=f"YAML config file (default: {AUDIOBOOK_CONFIG})",
-)
-parser.add_argument("--source-lang", default=None, help="Source language code")
-parser.add_argument("--target-lang", default=None, help="Target language code")
-# LLM overrides
-parser.add_argument("--model", default=None, help="Ollama model name (e.g. qwen3:14b)")
-parser.add_argument("--temperature", type=float, default=None, help="LLM temperature")
-# TTS overrides
+add_common_args(parser, output_prefix="audiobook", default_config_display=str(AUDIOBOOK_CONFIG))
+# Audiobook-specific args
 parser.add_argument("--voice", default=None, help="TTS voice name (e.g. af_heart)")
-parser.add_argument("--speed", type=float, default=None, help="TTS playback speed")
-# Pipeline overrides
 parser.add_argument("--max-workers", type=int, default=None, help="Parallel LLM requests")
 args = parser.parse_args()
-output_dir = args.output
 
-# Load config from YAML: --config > audiobook.yaml > audiobook.default.yaml
-config_path = args.config or AUDIOBOOK_CONFIG
-if not os.path.isfile(config_path):
-    if args.config:
-        parser.error(f"Config file not found: {config_path}")
-    config_path = AUDIOBOOK_DEFAULT
-if not os.path.isfile(config_path):
-    parser.error(f"Config file not found: {config_path}")
+# =============================================================================
+# Config resolution and overrides
+# =============================================================================
 
-loaded = load_audiobook_config(config_path)
-config = loaded.config
-CONTEXT_BUDGET = loaded.context_budget
-MAX_TOC_LEVEL = loaded.max_toc_level
-PDF_PARSER_BACKEND = loaded.pdf_parser
+pipeline, config, loaded = resolve_pipeline(
+    args, parser,
+    default_config=AUDIOBOOK_CONFIG,
+    default_fallback=AUDIOBOOK_DEFAULT,
+    load_config_fn=load_audiobook_config,
+)
+apply_common_overrides(args, config, lang_config=config.narration)
 
-# --input is required unless resuming (output dir already has sections/)
-if args.input is None:
-    sections_dir_check = os.path.join(output_dir, "sections")
-    if not os.path.isdir(sections_dir_check):
-        parser.error("--input is required (omit only when resuming a partial run with --output)")
-
-input_source = resolve_input(args.input) if args.input else None
-
-# Override language settings from CLI if provided
-if args.source_lang:
-    config.narration.source_lang = args.source_lang
-if args.target_lang:
-    config.narration.target_lang = args.target_lang
-    if isinstance(config.tts, KokoroTTS):
-        config.tts.lang = args.target_lang
-        config.tts.voices = None
-        config.tts.__post_init__()
-
-# Override LLM settings from CLI
-if args.model and isinstance(config.llm, OllamaLLM):
-    config.llm.model = args.model
-    if args.model in MODELS:
-        config.llm.num_ctx = MODELS[args.model]
-if args.temperature is not None:
-    config.llm.temperature = args.temperature
-
-# Override TTS settings from CLI
+# Audiobook-specific overrides
 if args.voice and hasattr(config.tts, "voices"):
     config.tts.voices = (args.voice,)
-if args.speed is not None and hasattr(config.tts, "speed"):
-    config.tts.speed = args.speed
-
-# Override pipeline settings from CLI
 if args.max_workers is not None:
     config.narration.max_workers = args.max_workers
 
-if input_source and input_source.kind == "pdf" and not os.path.isfile(input_source.path):
-    parser.error(f"Input file not found: {input_source.path}")
+output_dir = pipeline.output_dir
+sections_dir = pipeline.sections_dir
 
-os.makedirs(output_dir, exist_ok=True)
-log_path = os.path.join(output_dir, f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
-sys.stdout = TeeLogger(log_path)
-sys.stderr = TeeLogger(log_path, stream=sys.stderr)
+# =============================================================================
+# Print config info
+# =============================================================================
 
-sections_dir = os.path.join(output_dir, "sections")
-os.makedirs(sections_dir, exist_ok=True)
+print("=" * 60)
+narr = config.narration
+print(f"Output: {output_dir}")
+print(f"Source language: {narr.source_lang}, Target language: {narr.target_lang}")
+if narr.source_lang != narr.target_lang:
+    print(f"  → Cross-language mode: {narr.source_lang} → {narr.target_lang}")
+print_llm_info(config)
+print(f"TTS: {type(config.tts).__name__}")
+print(f"Context budget: {pipeline.context_budget:,} tokens per section")
 
 
-def _make_section(title, content_text):
-    """Build a Section from title + markdown content."""
-    return Section.from_content(title, content_text, language=config.narration.target_lang)
+# =============================================================================
+# Audiobook-specific helpers
+# =============================================================================
 
 
 def _trim_shared_page(md: str, current_title: str, next_title: str | None) -> str:
@@ -163,14 +117,11 @@ def _trim_shared_page(md: str, current_title: str, next_title: str | None) -> st
     if next_title is None:
         return md
 
-    import re
-
     # Extract the leading section number (e.g. "6.1" from "6.1 Implications...")
     # and the first few significant words for matching.
     num_match = re.match(r"^([\d.]+)\s+(.*)", next_title)
     if num_match:
         sec_num = num_match.group(1)
-        # First 4 words of the title text (PDF may truncate long titles)
         words = num_match.group(2).split()[:4]
         title_start = r"\s+".join(re.escape(w) for w in words)
     else:
@@ -181,15 +132,12 @@ def _trim_shared_page(md: str, current_title: str, next_title: str | None) -> st
     patterns = []
     if sec_num:
         esc_num = re.escape(sec_num)
-        # **6.1** **Implications for Designing...  (bold-formatted headings)
         patterns.append(re.compile(
             rf"^\**{esc_num}\**\s+\**{title_start}", re.MULTILINE
         ))
-        # ## 6.1 Implications for Designing...  (markdown headings)
         patterns.append(re.compile(
             rf"^#{1,6}\s+{esc_num}\s+{title_start}", re.MULTILINE
         ))
-    # Plain title match (first few words)
     patterns.append(re.compile(rf"^#{1,6}\s+\**{title_start}", re.MULTILINE))
     patterns.append(re.compile(rf"^\**{title_start}\**\s*$", re.MULTILINE))
 
@@ -205,188 +153,21 @@ def _trim_shared_page(md: str, current_title: str, next_title: str | None) -> st
 
 
 # =============================================================================
-# Stage 1–2: Content extraction (PDF branch vs URL branch)
+# Stage 1–2: Content extraction
 # =============================================================================
 
-print("=" * 60)
-narr = config.narration
-
-# --- Print common config info ---
-print(f"Output: {output_dir}")
-print(f"Source language: {narr.source_lang}, Target language: {narr.target_lang}")
-if narr.source_lang != narr.target_lang:
-    print(f"  → Cross-language mode: {narr.source_lang} → {narr.target_lang}")
-print(f"LLM: {type(config.llm).__name__} / {config.llm.model}")
-if isinstance(config.llm, OllamaLLM):
-    print(f"  Ollama URL: {config.llm.url}")
-    ollama_preflight(config.llm)
-    print("  Ollama connection verified, model available")
-print(f"TTS: {type(config.tts).__name__}")
-print(f"Context budget: {CONTEXT_BUDGET:,} tokens per section")
-
-sections: list[Section] = []
-
-if input_source is None:
-    # ----- Resume mode: reload sections from cached files -----
-    print("\nResuming from cached sections")
-    print("=" * 60)
-
-    for section_path in sorted(Path(sections_dir).glob("*.md")):
-        raw = section_path.read_text()
-        # Extract title from "# Title\n\n..." header
-        if raw.startswith("# "):
-            first_nl = raw.index("\n")
-            title = raw[2:first_nl]
-            content_text = raw[first_nl:].strip()
-        else:
-            title = section_path.stem
-            content_text = raw.strip()
-        sections.append(_make_section(title, content_text))
-        print(f"  {len(sections)}. {title} (cached)")
-
-    if not sections:
-        print("ERROR: No section files found in", sections_dir)
-        sys.exit(1)
-
-    print(f"\n{len(sections)} sections loaded from {sections_dir}/")
-
-elif input_source.kind == "url":
-    # ----- Webpage URL path -----
-    print("\nStage 1: Fetching webpage content")
-    print("=" * 60)
-
-    step_t0 = time.time()
-    markdown = fetch_url_content(input_source.path)
-    print(f"Extracted {len(markdown):,} chars of markdown from {input_source.path}")
-
-    web_sections = split_by_headings(markdown, max_level=MAX_TOC_LEVEL)
-    print(f"\nContent sections ({len(web_sections)}):\n")
-    for i, ws in enumerate(web_sections):
-        print(f"  {i+1}. {ws.title} ({len(ws.content):,} chars)")
-
-    print()
-    print("=" * 60)
-    print("Stage 2: Writing section files")
-    print("=" * 60)
-
-    for i, ws in enumerate(web_sections):
-        safe_title = ws.title.replace("/", "-").replace(" ", "_")[:50]
-        section_path = os.path.join(sections_dir, f"{i:02d}_{safe_title}.md")
-
-        if os.path.exists(section_path):
-            raw = Path(section_path).read_text()
-            if raw.startswith(f"# {ws.title}\n\n"):
-                content_text = raw[len(f"# {ws.title}\n\n"):]
-            else:
-                content_text = raw
-            sections.append(_make_section(ws.title, content_text))
-            print(f"  {i+1}. {ws.title} (cached)")
-        else:
-            content_text = ws.content.strip()
-            sections.append(_make_section(ws.title, content_text))
-            with open(section_path, "w") as f:
-                f.write(f"# {ws.title}\n\n{content_text}")
-            chars = len(content_text)
-            tokens_est = chars // 4
-            budget_pct = tokens_est / CONTEXT_BUDGET * 100
-            print(f"  {i+1}. {ws.title}")
-            print(
-                f"     {chars:,} chars, ~{tokens_est:,} tokens"
-                f" ({budget_pct:.0f}% of budget) → {section_path}"
-            )
-
-    step_elapsed = time.time() - step_t0
-    print(f"\n{len(sections)} sections saved to {sections_dir}/ ({fmt_time(step_elapsed)} total)")
-
-else:
-    # ----- PDF path (local file or downloaded PDF URL) -----
-    pdf_file = input_source.path
-
-    print("Stage 1: TOC analysis & section resolution")
-    print("=" * 60)
-
-    content = resolve_content_pages(pdf_file)
-    print(f"PDF: {content.total_pages} total pages")
-
-    if content.skipped_front:
-        print("\nSkipped (front matter):")
-        for s in content.skipped_front:
-            print(f"  {s}")
-    if content.skipped_back:
-        print("\nSkipped (back matter):")
-        for s in content.skipped_back:
-            print(f"  {s}")
-
-    toc_sections = resolve_content_sections(
-        pdf_file, max_level=MAX_TOC_LEVEL, max_tokens=CONTEXT_BUDGET
-    )
-
-    print(f"\nContent sections ({len(toc_sections)}):\n")
-    for i, s in enumerate(toc_sections):
-        pages = s.end_page - s.start_page + 1
-        indent = "  " * (s.level - 1)
-        print(f"  {i+1}. {indent}{s.title} (p.{s.start_page}-{s.end_page}, {pages} pages)")
-
-    # --- Stage 2: Markdown extraction per section ---
-
-    print()
-    print("=" * 60)
-    print("Stage 2: Markdown extraction per section")
-    print("=" * 60)
-
-    step_t0 = time.time()
-
-    for i, toc_sec in enumerate(toc_sections):
-        safe_title = toc_sec.title.replace("/", "-").replace(" ", "_")[:50]
-        section_path = os.path.join(sections_dir, f"{i:02d}_{safe_title}.md")
-
-        if os.path.exists(section_path):
-            raw = Path(section_path).read_text()
-            if raw.startswith(f"# {toc_sec.title}\n\n"):
-                content_text = raw[len(f"# {toc_sec.title}\n\n"):]
-            else:
-                content_text = raw
-            sections.append(_make_section(toc_sec.title, content_text))
-            chars = len(content_text)
-            tokens_est = chars // 4
-            budget_pct = tokens_est / CONTEXT_BUDGET * 100
-            print(f"  {i+1}. {toc_sec.title} (cached)")
-            print(
-                f"     {chars:,} chars, ~{tokens_est:,} tokens"
-                f" ({budget_pct:.0f}% of budget) → {section_path}"
-            )
-        else:
-            t0 = time.time()
-            pages = list(range(toc_sec.start_page, toc_sec.end_page + 1))
-            md = pdf_to_markdown(pdf_file, backend=PDF_PARSER_BACKEND, pages=pages)
-
-            # Trim shared-page overlap: if the next section starts on
-            # the same page as this section's end, cut at its heading.
-            next_title = None
-            if i + 1 < len(toc_sections):
-                nxt = toc_sections[i + 1]
-                if nxt.start_page <= toc_sec.end_page:
-                    next_title = nxt.title
-            content_text = _trim_shared_page(md, toc_sec.title, next_title).strip()
-            chars = len(content_text)
-            tokens_est = chars // 4
-
-            sections.append(_make_section(toc_sec.title, content_text))
-
-            with open(section_path, "w") as f:
-                f.write(f"# {toc_sec.title}\n\n{content_text}")
-
-            elapsed = time.time() - t0
-            budget_pct = tokens_est / CONTEXT_BUDGET * 100
-            print(f"  {i+1}. {toc_sec.title}")
-            print(
-                f"     {chars:,} chars, ~{tokens_est:,} tokens"
-                f" ({budget_pct:.0f}% of budget),"
-                f" {fmt_time(elapsed)} → {section_path}"
-            )
-
-    step_elapsed = time.time() - step_t0
-    print(f"\n{len(sections)} sections saved to {sections_dir}/ ({fmt_time(step_elapsed)} total)")
+result = extract_content(
+    input_source=pipeline.input_source,
+    sections_dir=sections_dir,
+    max_toc_level=pipeline.max_toc_level,
+    context_budget=pipeline.context_budget,
+    pdf_parser=pipeline.pdf_parser,
+    trim_overlap=_trim_shared_page,
+)
+sections = [
+    Section.from_content(s.title, s.content, language=narr.target_lang)
+    for s in result.sections
+]
 
 
 # =============================================================================

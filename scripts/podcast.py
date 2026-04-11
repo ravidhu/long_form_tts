@@ -26,7 +26,6 @@ import sys
 import time
 
 logging.getLogger("phonemizer").setLevel(logging.ERROR)
-from datetime import datetime
 from pathlib import Path
 
 import soundfile as sf
@@ -37,9 +36,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from configs.common import (  # noqa: E402
     PODCAST_CONFIG,
     PODCAST_DEFAULT,
-    TeeLogger,
     fmt_time,
-    resolve_input,
+)
+from configs.cli_arg_parser import (  # noqa: E402
+    add_common_args,
+    apply_common_overrides,
+    print_llm_info,
+    resolve_pipeline,
 )
 from configs.loader import load_podcast_config  # noqa: E402
 
@@ -53,48 +56,26 @@ from podcast import (  # noqa: E402
     render_dialogue,
 )
 from shared.audio_assembler import assemble_audiobook  # noqa: E402
-from shared.pdf_parser import (  # noqa: E402
-    pdf_to_markdown,
-    resolve_content_pages,
-    resolve_content_sections,
-)
+from shared.content_extractor import extract_content  # noqa: E402
 from shared.providers import (  # noqa: E402
     KOKORO_VOICE_PRESETS,
     KokoroTTS,
-    OllamaLLM,
-    ollama_preflight,
 )
-from shared.web_parser import fetch_url_content, split_by_headings  # noqa: E402
+
+# =============================================================================
+# CLI setup
+# =============================================================================
 
 parser = argparse.ArgumentParser(description="Podcast pipeline — PDF/URL to two-speaker audio")
-parser.add_argument(
-    "--input", "-i", default=None,
-    help="Input PDF file or URL (required unless resuming a partial run)",
-)
-parser.add_argument(
-    "--output", "-o",
-    default=f"output/podcast_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-    help="Output directory (pass an existing dir to resume a partial run)",
-)
-parser.add_argument(
-    "--config", "-c", default=None,
-    help=f"YAML config file (default: {PODCAST_CONFIG})",
-)
-parser.add_argument("--source-lang", default=None, help="Source language code")
-parser.add_argument("--target-lang", default=None, help="Target language code")
+add_common_args(parser, output_prefix="podcast", default_config_display=str(PODCAST_CONFIG))
+# Podcast-specific args
 parser.add_argument(
     "--only",
     help="Render only specific segments: intro, outro, or 1-based section numbers. "
          "Comma-separated, ranges supported. Example: --only intro,1-3,outro",
 )
-# LLM overrides
-parser.add_argument("--model", default=None, help="Ollama model name (e.g. qwen3:14b)")
-parser.add_argument("--temperature", type=float, default=None, help="LLM temperature")
-# TTS overrides
 parser.add_argument("--voice1", default=None, help="Speaker 1 TTS voice (e.g. bf_emma)")
 parser.add_argument("--voice2", default=None, help="Speaker 2 TTS voice (e.g. bm_george)")
-parser.add_argument("--speed", type=float, default=None, help="TTS playback speed (both speakers)")
-# Dialogue overrides
 parser.add_argument("--format", default=None, choices=["two_hosts", "host_guest"],
                     help="Dialogue format")
 parser.add_argument("--voice1name", default=None, help="Speaker 1 name")
@@ -102,60 +83,27 @@ parser.add_argument("--voice2name", default=None, help="Speaker 2 name")
 parser.add_argument("--duration", type=int, default=None, help="Target duration in minutes")
 parser.add_argument("--segment-words", type=int, default=None, help="Words per segment (~8min at 150wpm)")
 args = parser.parse_args()
-output_dir = args.output
 
-# Load config from YAML: --config > podcast.yaml > podcast.default.yaml
-config_path = args.config or PODCAST_CONFIG
-if not os.path.isfile(config_path):
-    if args.config:
-        parser.error(f"Config file not found: {config_path}")
-    config_path = PODCAST_DEFAULT
-if not os.path.isfile(config_path):
-    parser.error(f"Config file not found: {config_path}")
+# =============================================================================
+# Config resolution and overrides
+# =============================================================================
 
-loaded = load_podcast_config(config_path)
-config = loaded.config
-CONTEXT_BUDGET = loaded.context_budget
-MAX_TOC_LEVEL = loaded.max_toc_level
-PDF_PARSER_BACKEND = loaded.pdf_parser
+pipeline, config, loaded = resolve_pipeline(
+    args, parser,
+    default_config=PODCAST_CONFIG,
+    default_fallback=PODCAST_DEFAULT,
+    load_config_fn=load_podcast_config,
+)
+apply_common_overrides(args, config, lang_config=config.dialogue)
 
-# --input is required unless resuming (output dir already has sections/)
-if args.input is None:
-    sections_dir_check = os.path.join(output_dir, "sections")
-    if not os.path.isdir(sections_dir_check):
-        parser.error("--input is required (omit only when resuming a partial run with --output)")
-
-input_source = resolve_input(args.input) if args.input else None
-
-# Override language settings from CLI if provided
-if args.source_lang:
-    config.dialogue.source_lang = args.source_lang
-if args.target_lang:
-    config.dialogue.target_lang = args.target_lang
-    if isinstance(config.tts, KokoroTTS):
-        config.tts.lang = args.target_lang
-        config.tts.voices = None  # reset so __post_init__ picks lang-appropriate voices
-        config.tts.__post_init__()
-
-# Override LLM settings from CLI
-if args.model and isinstance(config.llm, OllamaLLM):
-    config.llm.model = args.model
-    from configs.common import MODELS
-    if args.model in MODELS:
-        config.llm.num_ctx = MODELS[args.model]
-if args.temperature is not None:
-    config.llm.temperature = args.temperature
-
-# Override TTS settings from CLI
+# Podcast-specific overrides
 if (args.voice1 or args.voice2) and hasattr(config.tts, "voices"):
     v1 = args.voice1 or (config.tts.voices[0] if config.tts.voices else "bf_emma")
     v2 = args.voice2 or (config.tts.voices[1] if len(config.tts.voices) > 1 else "bm_george")
     config.tts.voices = (v1, v2)
-if args.speed is not None and hasattr(config.tts, "speed"):
-    config.tts.speed = args.speed
+if args.speed is not None and hasattr(config.tts, "speeds"):
     config.tts.speeds = None  # clear per-voice speeds when global speed is set
 
-# Override dialogue settings from CLI
 if args.format:
     config.dialogue.format = args.format
 if args.voice1name:
@@ -167,45 +115,14 @@ if args.duration is not None:
 if args.segment_words is not None:
     config.dialogue.segment_target_words = args.segment_words
 
-if input_source and input_source.kind == "pdf" and not os.path.isfile(input_source.path):
-    parser.error(f"Input file not found: {input_source.path}")
-
-os.makedirs(output_dir, exist_ok=True)
-log_path = os.path.join(output_dir, f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
-sys.stdout = TeeLogger(log_path)
-sys.stderr = TeeLogger(log_path, stream=sys.stderr)
-
-sections_dir = os.path.join(output_dir, "sections")
-os.makedirs(sections_dir, exist_ok=True)
-
-
-def _parse_only(value: str, total: int) -> set[int]:
-    """Parse --only value into 0-based indices into all_dialogue/labels.
-
-    Mapping: intro → 0, section N (1-based) → N, outro → total-1.
-    """
-    indices = set()
-    for part in value.split(","):
-        part = part.strip().lower()
-        if part == "intro":
-            indices.add(0)
-        elif part == "outro":
-            indices.add(total - 1)
-        elif "-" in part:
-            a, b = part.split("-", 1)
-            indices.update(range(int(a), int(b) + 1))
-        else:
-            indices.add(int(part))
-    return {i for i in indices if 0 <= i < total}
-
+output_dir = pipeline.output_dir
+sections_dir = pipeline.sections_dir
 
 # =============================================================================
-# Stage 1–2: Content extraction (PDF branch vs URL branch)
+# Print config info
 # =============================================================================
 
 print("=" * 60)
-
-# --- Print common config info ---
 dlg = config.dialogue
 print(f"Output: {output_dir}")
 print(f"Format: {dlg.format} ({dlg.speaker1_name} & {dlg.speaker2_name})")
@@ -214,11 +131,7 @@ if dlg.target_duration_min:
 else:
     print("Target duration: auto (accumulate from all sections)")
 print(f"Language: {dlg.source_lang} → {dlg.target_lang}")
-print(f"LLM: {type(config.llm).__name__} / {config.llm.model}")
-if isinstance(config.llm, OllamaLLM):
-    print(f"  Ollama URL: {config.llm.url}")
-    ollama_preflight(config.llm)
-    print("  Ollama connection verified, model available")
+print_llm_info(config)
 print(f"TTS: {type(config.tts).__name__}")
 if isinstance(config.tts, KokoroTTS):
     print(f"  Lang: {config.tts.lang}, Voices: {config.tts.voices}")
@@ -238,146 +151,44 @@ if isinstance(config.tts, KokoroTTS):
                 f"Kokoro would phonemize {dlg.target_lang} text with wrong rules."
             )
 
-sections_markdown: list[tuple[str, str]] = []  # list of (title, content) tuples
 
-if input_source is None:
-    # ----- Resume mode: reload sections from cached files -----
-    print("\nResuming from cached sections")
-    print("=" * 60)
+# =============================================================================
+# Podcast-specific helpers
+# =============================================================================
 
-    for section_path in sorted(Path(sections_dir).glob("*.md")):
-        raw = section_path.read_text()
-        if raw.startswith("# "):
-            first_nl = raw.index("\n")
-            title = raw[2:first_nl]
-            content_text = raw[first_nl:].strip()
+
+def _parse_only(value: str, total: int) -> set[int]:
+    """Parse --only value into 0-based indices into all_dialogue/labels.
+
+    Mapping: intro -> 0, section N (1-based) -> N, outro -> total-1.
+    """
+    indices = set()
+    for part in value.split(","):
+        part = part.strip().lower()
+        if part == "intro":
+            indices.add(0)
+        elif part == "outro":
+            indices.add(total - 1)
+        elif "-" in part:
+            a, b = part.split("-", 1)
+            indices.update(range(int(a), int(b) + 1))
         else:
-            title = section_path.stem
-            content_text = raw.strip()
-        sections_markdown.append((title, content_text))
-        print(f"  {len(sections_markdown)}. {title} (cached)")
+            indices.add(int(part))
+    return {i for i in indices if 0 <= i < total}
 
-    if not sections_markdown:
-        print("ERROR: No section files found in", sections_dir)
-        sys.exit(1)
 
-    print(f"\n{len(sections_markdown)} sections loaded from {sections_dir}/")
+# =============================================================================
+# Stage 1-2: Content extraction
+# =============================================================================
 
-elif input_source.kind == "url":
-    # ----- Webpage URL path -----
-    print("\nStage 1: Fetching webpage content")
-    print("=" * 60)
-
-    step_t0 = time.time()
-    markdown = fetch_url_content(input_source.path)
-    print(f"Extracted {len(markdown):,} chars of markdown from {input_source.path}")
-
-    web_sections = split_by_headings(markdown, max_level=MAX_TOC_LEVEL)
-    print(f"\nContent sections ({len(web_sections)}):\n")
-    for i, ws in enumerate(web_sections):
-        print(f"  {i+1}. {ws.title} ({len(ws.content):,} chars)")
-
-    print()
-    print("=" * 60)
-    print("Stage 2: Writing section files")
-    print("=" * 60)
-
-    for i, ws in enumerate(web_sections):
-        safe_title = ws.title.replace("/", "-").replace(" ", "_")[:50]
-        section_path = os.path.join(sections_dir, f"{i:02d}_{safe_title}.md")
-
-        if os.path.exists(section_path):
-            raw = Path(section_path).read_text()
-            if raw.startswith(f"# {ws.title}\n\n"):
-                content_text = raw[len(f"# {ws.title}\n\n"):]
-            else:
-                content_text = raw
-            sections_markdown.append((ws.title, content_text))
-            print(f"  {i+1}. {ws.title} (cached)")
-        else:
-            content_text = ws.content.strip()
-            sections_markdown.append((ws.title, content_text))
-            with open(section_path, "w") as f:
-                f.write(f"# {ws.title}\n\n{content_text}")
-            chars = len(content_text)
-            print(f"  {i+1}. {ws.title} ({chars:,} chars) → {section_path}")
-
-    step_elapsed = time.time() - step_t0
-    print(
-        f"\n{len(sections_markdown)} sections saved to"
-        f" {sections_dir}/ ({fmt_time(step_elapsed)} total)"
-    )
-
-else:
-    # ----- PDF path (local file or downloaded PDF URL) -----
-    pdf_file = input_source.path
-
-    print("Stage 1: TOC analysis & section resolution")
-    print("=" * 60)
-
-    content = resolve_content_pages(pdf_file)
-    print(f"PDF: {content.total_pages} total pages")
-
-    if content.skipped_front:
-        print("\nSkipped (front matter):")
-        for s in content.skipped_front:
-            print(f"  {s}")
-    if content.skipped_back:
-        print("\nSkipped (back matter):")
-        for s in content.skipped_back:
-            print(f"  {s}")
-
-    toc_sections = resolve_content_sections(
-        pdf_file, max_level=MAX_TOC_LEVEL, max_tokens=CONTEXT_BUDGET
-    )
-
-    print(f"\nContent sections ({len(toc_sections)}):\n")
-    for i, s in enumerate(toc_sections):
-        pages = s.end_page - s.start_page + 1
-        indent = "  " * (s.level - 1)
-        print(f"  {i+1}. {indent}{s.title} (p.{s.start_page}-{s.end_page}, {pages} pages)")
-
-    # --- Stage 2: Markdown extraction per section ---
-
-    print()
-    print("=" * 60)
-    print("Stage 2: Markdown extraction per section")
-    print("=" * 60)
-
-    step_t0 = time.time()
-
-    for i, toc_sec in enumerate(toc_sections):
-        safe_title = toc_sec.title.replace("/", "-").replace(" ", "_")[:50]
-        section_path = os.path.join(sections_dir, f"{i:02d}_{safe_title}.md")
-
-        if os.path.exists(section_path):
-            raw = Path(section_path).read_text()
-            if raw.startswith(f"# {toc_sec.title}\n\n"):
-                content_text = raw[len(f"# {toc_sec.title}\n\n"):]
-            else:
-                content_text = raw
-            sections_markdown.append((toc_sec.title, content_text))
-            chars = len(content_text)
-            print(f"  {i+1}. {toc_sec.title} (cached, {chars:,} chars)")
-        else:
-            t0 = time.time()
-            pages = list(range(toc_sec.start_page, toc_sec.end_page + 1))
-            md = pdf_to_markdown(pdf_file, backend=PDF_PARSER_BACKEND, pages=pages)
-            content_text = md.strip()
-            sections_markdown.append((toc_sec.title, content_text))
-
-            with open(section_path, "w") as f:
-                f.write(f"# {toc_sec.title}\n\n{content_text}")
-
-            elapsed = time.time() - t0
-            chars = len(content_text)
-            print(f"  {i+1}. {toc_sec.title} ({chars:,} chars, {fmt_time(elapsed)})")
-
-    step_elapsed = time.time() - step_t0
-    print(
-        f"\n{len(sections_markdown)} sections saved to"
-        f" {sections_dir}/ ({fmt_time(step_elapsed)} total)"
-    )
+result = extract_content(
+    input_source=pipeline.input_source,
+    sections_dir=sections_dir,
+    max_toc_level=pipeline.max_toc_level,
+    context_budget=pipeline.context_budget,
+    pdf_parser=pipeline.pdf_parser,
+)
+sections_markdown = [(s.title, s.content) for s in result.sections]
 
 
 # =============================================================================
@@ -389,12 +200,9 @@ print("=" * 60)
 print("Stage 3: Podcast outline generation")
 print("=" * 60)
 
-os.makedirs(output_dir, exist_ok=True)
-
 outline_path = os.path.join(output_dir, "podcast_outline.md")
 
 if os.path.exists(outline_path):
-    # Cache hit — reconstruct PodcastOutline from saved file
     raw = Path(outline_path).read_text()
     title = ""
     for line in raw.splitlines():
@@ -456,7 +264,6 @@ for i, (title, content_text) in enumerate(sections_markdown):
     state_path = os.path.join(dialogue_dir, f"{i+1:02d}_state.json")
 
     if os.path.exists(seg_path) and os.path.exists(state_path):
-        # Cache hit — load dialogue and rolling state
         dialogue = Path(seg_path).read_text()
         state = json.loads(Path(state_path).read_text())
         dialogue_segments.append(dialogue)
@@ -487,11 +294,9 @@ for i, (title, content_text) in enumerate(sections_markdown):
         rolling_summary = result.updated_summary
         covered_topics = result.covered_topics
 
-        # Save segment dialogue
         with open(seg_path, "w") as f:
             f.write(result.dialogue)
 
-        # Persist rolling state for resume
         with open(state_path, "w") as f:
             json.dump({"rolling_summary": rolling_summary, "covered_topics": covered_topics}, f)
 
@@ -521,7 +326,6 @@ intro_path = os.path.join(dialogue_dir, "00_intro.txt")
 outro_path = os.path.join(dialogue_dir, "99_outro.txt")
 
 if os.path.exists(intro_path) and os.path.exists(outro_path):
-    # Cache hit
     intro = Path(intro_path).read_text()
     outro = Path(outro_path).read_text()
     print("Intro and outro loaded from cache.")

@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- Extracted shared content extraction (Stages 1-2) into `src/shared/content_extractor.py`, eliminating ~320 lines of duplicated resume/URL/PDF logic between audiobook and podcast scripts
+- Extracted shared CLI argument parsing and config resolution into `scripts/configs/cli_arg_parser.py`
+- Slimmed `scripts/audiobook.py` from 547 to ~330 lines and `scripts/podcast.py` from 666 to ~460 lines
+
 ## [0.3.1] - 2026-04-11
 
 ### Fixed
