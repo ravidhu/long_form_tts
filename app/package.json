@@ -1,6 +1,6 @@
 {
   "name": "long_form_tts_app",
-  "version": "0.1.0",
+  "version": "0.3.1",
   "description": "Convert PDFs and web articles into audiobooks or podcasts",
   "type": "module",
   "main": "./out/main/index.js",
@@ -31,7 +31,7 @@
     ],
     "extraResources": [
       {
-        "from": "resources/bin/${platform}/${arch}",
+        "from": "resources/bin/${os}/${arch}",
         "to": "bin",
         "filter": [
           "**/*"

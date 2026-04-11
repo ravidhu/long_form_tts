@@ -41,10 +41,10 @@ dist-mac: uv-mac build
 dist-linux: uv-linux build
 	docker run --rm \
 		-v "$(CURDIR)":/app \
-		-v "$(CURDIR)/../scripts":/project-scripts:ro \
-		-v "$(CURDIR)/../src":/project-src:ro \
-		-v "$(CURDIR)/../pyproject.toml":/project-pyproject.toml:ro \
-		-v "$(CURDIR)/../uv.lock":/project-uv.lock:ro \
+		-v "$(CURDIR)/../scripts":/scripts:ro \
+		-v "$(CURDIR)/../src":/src:ro \
+		-v "$(CURDIR)/../pyproject.toml":/pyproject.toml:ro \
+		-v "$(CURDIR)/../uv.lock":/uv.lock:ro \
 		-v "$(CURDIR)/release":/app/release \
 		-w /app \
 		electronuserland/builder:20 \
@@ -53,10 +53,10 @@ dist-linux: uv-linux build
 dist-win: uv-win build
 	docker run --rm \
 		-v "$(CURDIR)":/app \
-		-v "$(CURDIR)/../scripts":/project-scripts:ro \
-		-v "$(CURDIR)/../src":/project-src:ro \
-		-v "$(CURDIR)/../pyproject.toml":/project-pyproject.toml:ro \
-		-v "$(CURDIR)/../uv.lock":/project-uv.lock:ro \
+		-v "$(CURDIR)/../scripts":/scripts:ro \
+		-v "$(CURDIR)/../src":/src:ro \
+		-v "$(CURDIR)/../pyproject.toml":/pyproject.toml:ro \
+		-v "$(CURDIR)/../uv.lock":/uv.lock:ro \
 		-v "$(CURDIR)/release":/app/release \
 		-w /app \
 		electronuserland/builder:wine \
