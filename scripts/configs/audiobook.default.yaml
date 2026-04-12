@@ -16,8 +16,8 @@ narration:
 # LLM backend — pick one, comment out the other
 llm:
   backend: mlx
-  model: Qwen/Qwen3.5-35B-A3B-MLX-4bit
-  # max_tokens: 8192
+  model: mlx-community/Qwen3.5-35B-A3B-4bit
+  # max_tokens: 16384
   # temperature: 0.7
 
 # To use Ollama instead, replace the llm block above with:

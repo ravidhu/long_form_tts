@@ -32,7 +32,7 @@ def add_common_args(
     )
     parser.add_argument(
         "--output", "-o",
-        default=f"output/{output_prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+        default=f"{output_prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
         help="Output directory (pass an existing dir to resume a partial run)",
     )
     parser.add_argument(
@@ -73,6 +73,8 @@ def resolve_pipeline(
     and *loaded* is the full loader result for accessing extra fields.
     """
     output_dir = args.output
+    if not output_dir.startswith("output/") and not output_dir.startswith("output\\"):
+        output_dir = os.path.join("output", output_dir)
 
     # Config file resolution: --config > default_config > default_fallback
     config_path = args.config or str(default_config)

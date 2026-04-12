@@ -15,16 +15,34 @@ from shared.providers import MLXLLM, ChatterboxTTS, KokoroTTS, OllamaLLM
 
 # Known model context windows (for budget calculation)
 MODELS: dict[str, int] = {
+    # ── Qwen 3 (Ollama) ──
     "qwen3:32b":        40960,
     "qwen3:14b":        40960,
     "qwen3:8b":         40960,
     "qwen3:30b-a3b":    262144,
+    # ── Qwen 3.5 (Ollama) ──
+    "qwen3.5:35b-a3b":  262144,
+    "qwen3.5:27b":      262144,
+    "qwen3.5:9b":       262144,
+    # ── Gemma 4 (Ollama) ──
+    "gemma4:26b":       262144,
+    "gemma4:31b":       262144,
+    # ── Mistral (Ollama) ──
     "mistral-small3.2:24b-instruct-2506-q8_0": 131072,
     "mistral-nemo":     131072,
+    # ── Qwen 3 (MLX) ──
     "Qwen/Qwen3-8B-MLX-4bit":      40960,
     "Qwen/Qwen3-14B-MLX-4bit":     40960,
     "Qwen/Qwen3-32B-MLX-4bit":     40960,
     "Qwen/Qwen3-30B-A3B-MLX-4bit": 262144,
+    # ── Qwen 3.5 (MLX) ──
+    "mlx-community/Qwen3.5-35B-A3B-4bit":   262144,
+    "mlx-community/Qwen3.5-27B-4bit":  262144,
+    "mlx-community/Qwen3.5-9B-MLX-4bit": 262144,
+    # ── Gemma 4 (MLX) ──
+    "unsloth/gemma-4-26b-a4b-it-UD-MLX-4bit": 262144,
+    "unsloth/gemma-4-31b-it-UD-MLX-4bit":     262144,
+    # ── Mistral (MLX) ──
     "mlx-community/Mistral-Nemo-Instruct-2407-4bit": 131072,
     "mlx-community/Mistral-Small-3.2-24B-Instruct-2506-4bit": 131072,
 }

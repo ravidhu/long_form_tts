@@ -26,7 +26,7 @@ llm:
 # To use MLX instead, replace the llm block above with:
 # llm:
 #   backend: mlx
-#   model: Qwen/Qwen3.5-35B-A3B-MLX-4bit
+#   model: mlx-community/Qwen3.5-35B-A3B-4bit
 
 # TTS backend
 tts:

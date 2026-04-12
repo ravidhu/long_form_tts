@@ -11,7 +11,9 @@ from dataclasses import dataclass
 
 import requests
 
-# Strip <think>…</think> blocks emitted by reasoning models (e.g. Qwen3)
+# Strip <think>…</think> blocks emitted by reasoning models (e.g. Qwen3).
+# MLX backend also disables thinking via enable_thinking=False in the chat
+# template; this regex is a safety net and handles the Ollama backend.
 _THINK_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
 
 
@@ -47,7 +49,7 @@ class MLXLLM:
     """
 
     model: str = "Qwen/Qwen3-14B-MLX-4bit"
-    max_tokens: int = 8192
+    max_tokens: int = 16384
     temperature: float = 0.7
 
 
@@ -242,6 +244,7 @@ def _mlx_generate(system: str, prompt: str, llm: MLXLLM) -> str:
     ]
     formatted = tokenizer.apply_chat_template(
         messages, tokenize=False, add_generation_prompt=True,
+        enable_thinking=False,
     )
     response = generate(
         model, tokenizer,

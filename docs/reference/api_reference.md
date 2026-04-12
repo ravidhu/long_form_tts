@@ -34,7 +34,7 @@ Optional fields (`top_k`, `top_p`, `repeat_penalty`, `stop`) are only sent to Ol
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `model` | `str` | `"Qwen/Qwen3-14B-MLX-4bit"` | HuggingFace repo with MLX weights |
-| `max_tokens` | `int` | `8192` | Max output tokens |
+| `max_tokens` | `int` | `16384` | Max output tokens |
 | `temperature` | `float` | `0.7` | Sampling temperature |
 
 Runs HuggingFace models locally on Apple Silicon via `mlx-lm`. The model is downloaded on first use (cached in `~/.cache/huggingface/`) and stays loaded in memory across all calls within a run.

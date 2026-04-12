@@ -32,6 +32,9 @@ def assemble_audiobook(
     final_audio = np.concatenate(parts)
     sf.write(output_path, final_audio, sample_rate)
 
-    duration_min = len(final_audio) / sample_rate / 60
+    total_seconds = len(final_audio) / sample_rate
+    hours, remainder = divmod(int(total_seconds), 3600)
+    minutes, seconds = divmod(remainder, 60)
+    duration = f"{hours}h {minutes}m {seconds}s" if hours else f"{minutes}m {seconds}s"
     print(f"Audiobook saved to: {output_path}")
-    print(f"Duration: {duration_min:.1f} minutes")
+    print(f"Duration: {duration}")

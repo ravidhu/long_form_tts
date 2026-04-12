@@ -6,8 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Added
+
+- Qwen 3.5 model support: `qwen3.5:35b-a3b`, `qwen3.5:27b`, `qwen3.5:9b` (Ollama) and MLX 4-bit variants — 262K native context window
+- Gemma 4 model support: `gemma4:26b` (MoE), `gemma4:31b` (Dense) (Ollama) and MLX 4-bit variants — 256K context window
+- LLM model selection guide (`docs/backends/llm_models.md`) with hardware recommendations, advantages per family, and context window analysis
+
 ### Changed
 
+- Increased MLX default `max_tokens` from 8192 to 16384 to prevent output truncation on large sections — aligns with the large context windows (128K-262K) of supported models
 - Extracted shared content extraction (Stages 1-2) into `src/shared/content_extractor.py`, eliminating ~320 lines of duplicated resume/URL/PDF logic between audiobook and podcast scripts
 - Extracted shared CLI argument parsing and config resolution into `scripts/configs/cli_arg_parser.py`
 - Slimmed `scripts/audiobook.py` from 547 to ~330 lines and `scripts/podcast.py` from 666 to ~460 lines

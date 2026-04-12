@@ -138,6 +138,7 @@ llm:
 ### Backends & features
 
 - [PDF Backends](docs/backends/pdf_backends.md) — pymupdf vs docling comparison
+- [LLM Models](docs/backends/llm_models.md) — supported models, hardware recommendations, and context window guide
 - [TTS Backends](docs/backends/tts_backends.md) — Kokoro vs Chatterbox comparison
 - [TOC Analysis](docs/backends/toc_analysis.md) — document splitting and section detection
 - [Translation](docs/backends/translation.md) — cross-language generation, voice auto-selection
