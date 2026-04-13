@@ -9,6 +9,111 @@ from __future__ import annotations
 
 import re
 
+
+# ---------------------------------------------------------------------------
+# Rejoin PDF hard-wrapped sentences
+# ---------------------------------------------------------------------------
+
+# A line that does NOT end with sentence-terminating punctuation.
+# Allows trailing markdown (bold/italic closers), whitespace, and
+# optional citation like [42] at the very end.
+_INCOMPLETE_LINE_RE = re.compile(
+    r".*[a-zA-Z,;:()\[\]\u2014\u2013\-]"  # ends with letter, comma, paren, bracket, dash
+    r"(?:\*{1,2}|_{1,2})?"                 # optional markdown closer
+    r"\s*$"
+)
+
+# A line that is clearly a continuation: starts with a citation bracket,
+# lowercase word, dash (list continuation), or closing paren/bracket.
+_CONTINUATION_RE = re.compile(
+    r"^\s*(?:"
+    r"\[\d|"                # citation: [49, ...
+    r"[a-z]|"              # lowercase continuation
+    r"- [a-z]|"            # dash continuation: "- in such cases"
+    r"[)\]]"               # closing bracket/paren
+    r")"
+)
+
+
+def stitch_broken_lines(text: str) -> str:
+    """Rejoin lines that PDF column extraction broke mid-sentence.
+
+    PDF extractors (pymupdf4llm, Docling) faithfully reproduce the
+    column width, inserting hard line breaks and sometimes blank lines
+    where the original two-column layout wrapped.  When a citation
+    like ``[49]`` lands on the next line — possibly after a blank line —
+    the block splitter sees separate paragraphs and the narration
+    loses sentence coherence.
+
+    This function collapses spurious blank lines between an incomplete
+    sentence and its continuation, then joins adjacent lines that form
+    a single sentence.
+    """
+    lines = text.split("\n")
+    out: list[str] = []
+    i = 0
+
+    while i < len(lines):
+        line = lines[i]
+
+        # Skip structural lines (headings, tables, code fences, list items)
+        stripped = line.strip()
+        if (
+            stripped.startswith("#")
+            or stripped.startswith("|")
+            or stripped.startswith("```")
+            or re.match(r"^\s*[-*+]\s", line)
+            or re.match(r"^\s*\d+[.)]\s", line)
+        ):
+            out.append(line)
+            i += 1
+            continue
+
+        # Look ahead: if this line is incomplete, check for blank lines
+        # followed by a continuation line and collapse them.
+        if stripped and _INCOMPLETE_LINE_RE.match(stripped):
+            # Count consecutive blank lines ahead
+            j = i + 1
+            while j < len(lines) and not lines[j].strip():
+                j += 1
+
+            # If there were 1-2 blank lines and the next line continues
+            # the sentence, stitch them together.
+            blanks = j - (i + 1)
+            if (
+                0 < blanks <= 2
+                and j < len(lines)
+                and _CONTINUATION_RE.match(lines[j].strip())
+            ):
+                # Join: current line + " " + continuation (skip blanks)
+                out.append(line.rstrip())
+                i = j  # jump to the continuation line (will be processed next iteration)
+                continue
+
+        out.append(line)
+        i += 1
+
+    # Second pass: join adjacent non-blank lines where the first is
+    # incomplete and the second is a continuation.  This handles the
+    # case where there's no blank line between them (simple hard wrap).
+    merged: list[str] = []
+    for line in out:
+        if (
+            merged
+            and merged[-1].strip()
+            and not merged[-1].strip().startswith("#")
+            and not merged[-1].strip().startswith("|")
+            and not merged[-1].strip().startswith("```")
+            and _INCOMPLETE_LINE_RE.match(merged[-1].strip())
+            and line.strip()
+            and _CONTINUATION_RE.match(line.strip())
+        ):
+            merged[-1] = merged[-1].rstrip() + "\n" + line
+        else:
+            merged.append(line)
+
+    return "\n".join(merged)
+
 # ---------------------------------------------------------------------------
 # Markdown stripping
 # ---------------------------------------------------------------------------

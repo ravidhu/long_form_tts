@@ -14,7 +14,7 @@ from shared.markdown_parser import Section
 from shared.providers import LLMBackend, language_instruction, llm_generate
 
 from .blocks import Block, split_into_blocks
-from .preprocess import heading_to_transition, preprocess_paragraph
+from .preprocess import heading_to_transition, preprocess_paragraph, stitch_broken_lines
 from .prompts import (
     CODE_TO_DESCRIPTION_PROMPT,
     LIST_TO_PROSE_PROMPT,
@@ -44,7 +44,7 @@ def adapt_narration_section(
     needs_translation = source_lang != target_lang
     lang_suffix = language_instruction(source_lang, target_lang)
 
-    blocks = split_into_blocks(section.content)
+    blocks = split_into_blocks(stitch_broken_lines(section.content))
     narrated_parts: list[str] = []
     llm_calls = 0
 
