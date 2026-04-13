@@ -87,15 +87,21 @@ uv run python scripts/podcast.py --output output/my_podcast --only intro,1-3,out
 
 ### CLI flags
 
+The most common flags:
+
 | Flag | Pipelines | Description |
 |------|-----------|-------------|
 | `--input`, `-i` | Both | Input PDF file, PDF URL, or web page URL (required unless resuming) |
 | `--output`, `-o` | Both | Output directory (pass existing dir to resume) |
+| `--config`, `-c` | Both | Path to a YAML config file |
+| `--model` | Both | LLM model name (e.g. `qwen3:14b`) |
 | `--source-lang` | Both | Source language code (overrides config) |
 | `--target-lang` | Both | Target language code (overrides config, also updates TTS voice) |
-| `--only` | Podcast only | Render specific segments: `intro`, `outro`, or 1-based section numbers. Comma-separated, ranges supported (e.g. `intro,1-3,outro`). Outputs `podcast_partial.wav`. |
+| `--voice` | Audiobook | TTS voice name (e.g. `af_heart`) |
+| `--voice1` / `--voice2` | Podcast | Speaker TTS voices (e.g. `bf_emma`, `bm_george`) |
+| `--only` | Podcast | Render specific segments (e.g. `intro,1-3,outro`) |
 
-Short flags `-i` and `-o` are also available. `--input` is required for fresh runs but can be omitted when resuming a partial run (pass `--output` pointing to an existing output directory with cached sections).
+For the full list of flags (temperature, speed, format, duration, max-workers, and more), see the [CLI Reference](../reference/cli_reference.md).
 
 ## Configuration
 

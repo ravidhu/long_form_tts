@@ -28,66 +28,15 @@ uv run python scripts/podcast.py -i book.pdf -o output/my_podcast
 
 ### Partial rendering with `--only`
 
-The `--only` flag lets you re-render specific segments without re-running the full pipeline. Useful for fixing a single segment's audio or testing TTS changes:
-
-```bash
-# Re-render intro and sections 1-3 only
-uv run python scripts/podcast.py --output output/my_podcast --only intro,1-3,outro
-
-# Re-render just section 5
-uv run python scripts/podcast.py --output output/my_podcast --only 5
-```
-
-Segment numbers are 1-based (matching section order). Use `intro` and `outro` for the opening/closing segments. When `--only` is used, the output file is named `podcast_partial.wav` instead of `podcast.wav`.
+The `--only` flag lets you re-render specific segments without re-running the full pipeline. See [CLI Reference — `--only`](../reference/cli_reference.md#the---only-flag) for full syntax and examples.
 
 ---
 
-### Stage 1: Input Resolution & Content Extraction
+### Stages 1-2: Content Extraction
 
-**What it does**: Resolves the input (local PDF, PDF URL, or web page URL) and determines the document's structure.
+Input resolution (PDF, URL, web page), TOC analysis, and markdown extraction. These stages are shared with the audiobook pipeline — see [Content Extraction](content_extraction.md) for the full walkthrough.
 
-**Input types**:
-- **Local PDF** → TOC analysis and section resolution (below)
-- **PDF URL** → Downloaded and cached in `inputs/`, then processed as a local PDF. GitHub blob URLs are auto-rewritten to raw download URLs.
-- **Web page URL** → Fetched via trafilatura, content split by headings into sections (requires `[web]` extra)
-
-**How it works** (PDF path):
-1. Embedded bookmarks are extracted via `PyMuPDF.get_toc()`. If bookmarks are missing or cover less than 30% of the document, the pipeline falls back to Docling AI layout analysis to detect headings from font sizes and section numbering.
-2. Each bookmark is classified by regex on its title:
-   - **Front matter** (skipped): Cover, Title Page, Copyright, Table of Contents, etc.
-   - **Back matter** (skipped): Index, Glossary, Bibliography, Appendix, etc.
-   - **Preamble** (included): Foreword, Preface, Introduction, Acknowledgments
-   - **Content** (included): everything else
-3. `resolve_content_sections(max_level)` splits content into sections with page ranges
-4. Sections that exceed `CONTEXT_BUDGET` tokens are auto-subdivided
-
-**Output**: A list of sections in memory, each with a title and page range. Nothing is written to disk yet.
-
-**Key config**: `MAX_TOC_LEVEL` (`1` for podcast), `CONTEXT_BUDGET` — see [TOC Analysis — Section splitting](../backends/toc_analysis.md#section-splitting) for how these interact (level-based splitting, auto-subdivision of oversized sections, page-level chunking fallback).
-
----
-
-### Stage 2: Markdown Extraction
-
-**What it does**: Converts each section's PDF pages into markdown text.
-
-**How it works**:
-1. For each section, the page range is passed to `pdf_to_markdown(pdf_path, backend, pages)`
-2. The selected backend extracts text, tables, and structure into markdown
-3. Each section is saved as a separate `.md` file in `sections/`
-4. Structural features are detected: `has_table` (pipe + dashes), `has_list` (bullet/numbered patterns)
-
-**Backends**:
-| Backend | Speed | Quality | Notes |
-|---|---|---|---|
-| `pymupdf` | Very fast | Good | Default, no GPU needed |
-| `docling` | Moderate | Very good | Better section detection |
-
-**Output**: `sections/00_Foreword.md`, `sections/01_Chapter_1.md`, etc.
-
-**Cache**: If a section's `.md` file already exists, it's loaded from disk instead of re-extracted.
-
-**Key config**: [`PDF_PARSER_BACKEND`](../reference/api_reference.md#pdf_to_markdownpdf_path-backendpymupdf-pagesnone---str)
+The podcast uses `max_toc_level: 1` (part-level) because dialogue is generated sequentially with a rolling summary — fewer, larger sections give each conversation segment more material to discuss.
 
 ---
 
@@ -109,7 +58,7 @@ See [Translation](../backends/translation.md) for cross-language workflows and e
 **What it does**: Produces a structured episode plan from all sections in a single LLM call.
 
 **How it works**:
-1. All section titles and content previews (~2000 chars each) are sent to the LLM with the [outline system prompt](../src/podcast/prompts/outline_system.md)
+1. All section titles and content previews (~2000 chars each) are sent to the LLM with the [outline system prompt](../../src/podcast/prompts/outline_system.md)
 2. The LLM produces a structured outline with:
    - Episode title
    - Per-segment topics, hooks, and talking points
@@ -143,7 +92,7 @@ flowchart LR
 
 **How it works**:
 1. Sections are processed **one at a time** in order (not parallelizable — each depends on the previous)
-2. For each section, the LLM receives a [dialogue prompt](../src/podcast/prompts/) ([two hosts](../src/podcast/prompts/dialogue_two_hosts.md) or [host+guest](../src/podcast/prompts/dialogue_host_guest.md)) along with:
+2. For each section, the LLM receives a [dialogue prompt](../../src/podcast/prompts/) ([two hosts](../../src/podcast/prompts/dialogue_two_hosts.md) or [host+guest](../../src/podcast/prompts/dialogue_host_guest.md)) along with:
    - The global outline (constant context)
    - The section's markdown content
    - A rolling summary of everything discussed so far (~500 words, Chain-of-Density style)
@@ -169,8 +118,8 @@ flowchart LR
 **How it works**:
 1. Generated **after** all content segments, so the LLM knows what was discussed
 2. The LLM receives the outline and the complete list of covered topics
-3. The [intro prompt](../src/podcast/prompts/intro.md) hooks the listener and previews the episode
-4. The [outro prompt](../src/podcast/prompts/outro.md) summarizes key takeaways and wraps up
+3. The [intro prompt](../../src/podcast/prompts/intro.md) hooks the listener and previews the episode
+4. The [outro prompt](../../src/podcast/prompts/outro.md) summarizes key takeaways and wraps up
 
 **Output**: `dialogue/00_intro.txt`, `dialogue/99_outro.txt`
 

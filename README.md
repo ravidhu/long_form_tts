@@ -132,6 +132,7 @@ llm:
 ### Architecture & pipelines
 
 - [Architecture](docs/architecture/architecture.md) — pipeline design, package map, key decisions
+- [Content Extraction](docs/architecture/content_extraction.md) — shared Stages 1-2 (input resolution, TOC analysis, markdown extraction)
 - [Audiobook Pipeline](docs/architecture/audiobook_pipeline.md) — 5-stage audiobook walkthrough with caching details
 - [Podcast Pipeline](docs/architecture/podcast_pipeline.md) — 7-stage podcast walkthrough with caching details
 
@@ -145,6 +146,7 @@ llm:
 
 ### Reference
 
+- [CLI Reference](docs/reference/cli_reference.md) — all CLI flags for `audiobook.py` and `podcast.py`
 - [API Reference](docs/reference/api_reference.md) — all public functions, config classes, and data types
 - [Troubleshooting](docs/reference/troubleshooting.md) — common errors and how to fix them
 

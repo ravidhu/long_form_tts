@@ -24,52 +24,11 @@ uv run python scripts/audiobook.py -i book.pdf -o output/my_run
 
 ---
 
-### Stage 1: Input Resolution & Content Extraction
+### Stages 1-2: Content Extraction
 
-**What it does**: Resolves the input (local PDF, PDF URL, or web page URL) and determines the document's structure.
+Input resolution (PDF, URL, web page), TOC analysis, and markdown extraction. These stages are shared with the podcast pipeline — see [Content Extraction](content_extraction.md) for the full walkthrough.
 
-**Input types**:
-- **Local PDF** → TOC analysis and section resolution (below)
-- **PDF URL** → Downloaded and cached in `inputs/`, then processed as a local PDF. GitHub blob URLs are auto-rewritten to raw download URLs.
-- **Web page URL** → Fetched via trafilatura, content split by headings into sections (requires `[web]` extra)
-
-**How it works** (PDF path):
-1. Embedded bookmarks are extracted via `PyMuPDF.get_toc()`. If bookmarks are missing or cover less than 30% of the document, the pipeline falls back to Docling AI layout analysis to detect headings from font sizes and section numbering.
-2. Each bookmark is classified by regex on its title:
-   - **Front matter** (skipped): Cover, Title Page, Copyright, Table of Contents, etc.
-   - **Back matter** (skipped): Index, Glossary, Bibliography, Appendix, etc.
-   - **Preamble** (included): Foreword, Preface, Introduction, Acknowledgments
-   - **Content** (included): everything else
-3. `resolve_content_sections(max_level)` splits content into sections with page ranges
-4. Sections that exceed `CONTEXT_BUDGET` tokens are auto-subdivided
-
-**Output**: A list of sections in memory, each with a title and page range. Nothing is written to disk yet.
-
-**Key config**: `MAX_TOC_LEVEL` (`2` for audiobook), `CONTEXT_BUDGET` — see [TOC Analysis — Section splitting](../backends/toc_analysis.md#section-splitting) for how these interact (level-based splitting, auto-subdivision of oversized sections, page-level chunking fallback). The audiobook uses level 2 (chapter-granularity) because each chapter is narrated independently with no cross-section context.
-
----
-
-### Stage 2: Markdown Extraction
-
-**What it does**: Converts each section's PDF pages into markdown text.
-
-**How it works**:
-1. For each section, the page range is passed to `pdf_to_markdown(pdf_path, backend, pages)`
-2. The selected backend extracts text, tables, and structure into markdown
-3. Each section is saved as a separate `.md` file in `sections/`
-4. Structural features are detected: `has_table` (pipe + dashes), `has_list` (bullet/numbered patterns)
-
-**Backends**:
-| Backend | Speed | Quality | Notes |
-|---|---|---|---|
-| `pymupdf` | Very fast | Good | Default, no GPU needed |
-| `docling` | Moderate | Very good | Better section detection |
-
-**Output**: `sections/00_Foreword.md`, `sections/01_Chapter_1.md`, etc.
-
-**Cache**: If a section's `.md` file already exists, it's loaded from disk instead of re-extracted.
-
-**Key config**: [`PDF_PARSER_BACKEND`](../reference/api_reference.md#pdf_to_markdownpdf_path-backendpymupdf-pagesnone---str)
+The audiobook uses `max_toc_level: 2` (chapter-granularity) because each chapter is narrated independently with no cross-section context.
 
 ---
 
@@ -91,7 +50,7 @@ See [Translation](../backends/translation.md) for cross-language workflows and e
 **What it does**: Rewrites each section's markdown into narrator-ready prose suitable for TTS.
 
 **How it works**:
-1. Each section is sent to the LLM with the [narration system prompt](../src/audiobook/prompts/narration_system.md)
+1. Each section is sent to the LLM with the [narration system prompt](../../src/audiobook/prompts/narration_system.md)
 2. The LLM transforms the content following detailed rules:
    - Tables become flowing comparative sentences
    - Bullet lists become prose with transitions ("First... Additionally... Finally...")

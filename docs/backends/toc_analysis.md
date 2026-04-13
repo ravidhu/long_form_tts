@@ -348,28 +348,4 @@ This means `max_level=1` with a large context window might produce just 2 sectio
 
 ### Data classes
 
-```python
-@dataclass
-class TOCEntry:
-    level: int        # TOC depth (1 = top-level)
-    title: str        # Bookmark title
-    page: int         # 0-indexed page number
-    kind: str         # "front", "back", "preamble", or "content"
-
-@dataclass
-class ContentRange:
-    start_page: int           # inclusive, 0-indexed
-    end_page: int             # inclusive, 0-indexed
-    total_pages: int
-    skipped_front: list[str]  # descriptions of skipped front matter
-    skipped_back: list[str]   # descriptions of skipped back matter
-
-@dataclass
-class TOCSection:
-    title: str        # Section title from TOC
-    level: int        # TOC depth
-    start_page: int   # inclusive, 0-indexed
-    end_page: int     # inclusive, 0-indexed
-```
-
-See [API Reference — pdf_parser](../reference/api_reference.md#sharedpdf_parser) for full parameter docs.
+`TOCEntry`, `ContentRange`, and `TOCSection` — see [API Reference — pdf_parser](../reference/api_reference.md#sharedpdf_parser) for definitions and full parameter docs.

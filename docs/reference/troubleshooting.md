@@ -25,15 +25,18 @@ The request to Ollama failed even after retries. Common causes:
 
 - **Ollama crashed mid-run** — restart with `ollama serve` and resume the pipeline (same `--output` directory)
 - **Out of memory** — the model is too large for your hardware. Try a smaller model (e.g. `qwen3:4b`)
-- **Very long section** — increase `timeout` in your `OllamaLLM(timeout=900)` config (default is 600s)
+- **Very long section** — increase `timeout` in your YAML config (default is 600s):
+
+```yaml
+llm:
+  backend: ollama
+  model: qwen3:14b
+  timeout: 900   # 15 minutes
+```
 
 ### Ollama is slow
 
-Large sections can take several minutes per LLM call. The default timeout is 600 seconds (10 minutes). If you're running on slower hardware, increase it:
-
-```python
-llm = OllamaLLM(model="qwen3:14b", timeout=900)  # 15 minutes
-```
+Large sections can take several minutes per LLM call. The default timeout is 600 seconds (10 minutes). If you're running on slower hardware, increase `timeout` in your YAML config as shown above.
 
 ## Installation
 
@@ -48,7 +51,7 @@ MLX requires Apple Silicon. Not supported on Intel Macs or Linux.
 If the PDF has no embedded bookmarks, the entire document is treated as one section. Options:
 
 - Use a PDF editor to add bookmarks
-- Switch to `MAX_TOC_LEVEL=2` with the docling backend which detects headers via AI layout analysis
+- Set `max_toc_level: 2` and `pdf_parser: docling` in your YAML config — Docling detects headers via AI layout analysis
 
 ## TTS
 
@@ -67,4 +70,4 @@ Check your internet connection. Models are cached in `~/.cache/huggingface/` aft
 
 ### Voice/language mismatch error
 
-The podcast pipeline validates that voice prefixes match `target_lang` at startup. If you see this error, make sure your `KokoroTTS(voices=(...))` uses voices that match the target language. For example, French voices start with `f` (e.g. `ff_siwis`), English voices start with `a` (American) or `b` (British).
+The podcast pipeline validates that voice prefixes match `target_lang` at startup. If you see this error, make sure the `voices` in your YAML config (or `--voice1`/`--voice2` CLI flags) match the target language. For example, French voices start with `f` (e.g. `ff_siwis`), English voices start with `a` (American) or `b` (British).

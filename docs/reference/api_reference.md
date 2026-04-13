@@ -66,48 +66,7 @@ Results are cached per `(url, model)` pair — only the first call does network 
 from shared.providers import KokoroTTS, ChatterboxTTS
 ```
 
-#### `KokoroTTS`
-
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `lang` | `str \| None` | `None` | Auto-select voices from `KOKORO_VOICE_PRESETS`. Set by pipeline config from `target_lang`. |
-| `voices` | `tuple[str, ...] \| None` | `None` | Voice names. Auto-resolved from `lang` if not set. 1 for audiobook, 2 for podcast. |
-| `speed` | `float` | `0.95` | Global speech speed multiplier |
-| `speeds` | `tuple[float, ...] \| None` | `None` | Per-voice speeds (overrides `speed`). Index matches `voices`. |
-
-Voice naming convention: `{accent}{gender}_{name}`
-
-| Prefix | Accent | Gender |
-|---|---|---|
-| `af` | American | Female |
-| `am` | American | Male |
-| `bf` | British | Female |
-| `bm` | British | Male |
-| `ff` | French | Female |
-| `hf` | Hindi | Female |
-| `hm` | Hindi | Male |
-| `jf` | Japanese | Female |
-| `jm` | Japanese | Male |
-| `zf` | Chinese | Female |
-| `zm` | Chinese | Male |
-
-67 voices total. To list all available voices, run:
-
-```python
-from huggingface_hub import list_repo_tree
-[f.path for f in list_repo_tree("hexgrad/Kokoro-82M", path_in_repo="voices")]
-```
-
-#### `ChatterboxTTS`
-
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `audio_prompts` | `tuple[str, ...] \| None` | `None` | Reference audio paths for voice cloning (1 for audiobook, 2 for podcast) |
-| `exaggeration` | `float` | `0.5` | Emotion exaggeration control |
-| `cfg` | `float` | `0.5` | Classifier-free guidance strength |
-| `lang` | `str \| None` | `None` | Language code (e.g. "en", "fr") |
-
-Multilingual TTS with voice cloning support. 23 languages. Use `audio_prompts` to clone voices from reference audio files. No native speed control — the model uses a fixed token-to-mel mapping with no duration predictor.
+Two TTS backends are available: **KokoroTTS** (lightweight, 67 built-in voices, 8 languages) and **ChatterboxTTS** (voice cloning, 23 languages). For config fields, voice presets, usage examples, and platform details, see the [TTS Backends guide](../backends/tts_backends.md).
 
 ---
 
@@ -225,7 +184,7 @@ class AudiobookConfig:
     tts: KokoroTTS | ChatterboxTTS
 ```
 
-### `adapt_narration_section(section, llm, source_lang="en", target_lang="en") -> str`
+### `adapt_narration_section(section, llm, source_lang="en", target_lang="en") -> tuple[str, int]`
 
 Send a `Section` to an LLM for narration conversion. Works with any LLM backend (Ollama, MLX).
 
@@ -236,7 +195,7 @@ Send a `Section` to an LLM for narration conversion. Works with any LLM backend 
 | `source_lang` | `str` | `"en"` | PDF language |
 | `target_lang` | `str` | `"en"` | Audiobook language |
 
-Returns narration text with `[PAUSE_SHORT]`, `[PAUSE_MEDIUM]`, `[PAUSE_LONG]` markers.
+Returns a tuple of `(narration_text, llm_call_count)`. The narration text contains `[PAUSE_SHORT]`, `[PAUSE_MEDIUM]`, `[PAUSE_LONG]` markers. The call count is 0 for rule-based adaptation (short sections) or the number of LLM calls made.
 
 Supports any language pair the LLM can handle. A dynamic language instruction is appended to the base English prompt for non-English targets.
 
@@ -392,6 +351,14 @@ Render podcast dialogue to audio.
 | `model` | TTS model | From `load_tts_model()` |
 
 Returns a float32 numpy array at 24kHz sample rate.
+
+### `get_sample_rate(tts) -> int`
+
+Return the sample rate for the given TTS backend. Currently returns `24000` for all backends.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `tts` | `KokoroTTS \| ChatterboxTTS` | TTS config |
 
 ### Constants
 

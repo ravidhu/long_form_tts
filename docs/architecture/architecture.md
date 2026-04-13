@@ -62,6 +62,9 @@ src/
 │   │   ├── fetch_url_content.py # Download + extract via trafilatura
 │   │   └── split_by_headings.py # Split markdown by heading level
 │   │
+│   ├── content_extractor.py # Shared Stages 1-2 orchestration (PDF/URL → sections)
+│   ├── extract.py           # InputSource resolution (PDF, URL, web page)
+│   │
 │   └── audio_assembler/    # Stage 5/7
 │       └── assemble_audiobook.py # Concatenation + silence insertion + wav output
 │
@@ -91,7 +94,7 @@ src/
 
 ## Composable Config System
 
-Both pipelines use the same backend-specific config classes from [`src/shared/providers/`](../src/shared/providers/):
+Both pipelines use the same backend-specific config classes from [`src/shared/providers/`](../../src/shared/providers/):
 
 ```python
 # LLM backends — swap class to switch provider (all local, no cloud APIs)
@@ -110,7 +113,7 @@ classDiagram
     class AudiobookConfig {
         narration: NarrationConfig
         llm: OllamaLLM | MLXLLM
-        tts: KokoroTTS
+        tts: KokoroTTS | ChatterboxTTS
     }
     class PodcastConfig {
         dialogue: DialogueConfig
@@ -133,6 +136,7 @@ classDiagram
     AudiobookConfig --> OllamaLLM
     AudiobookConfig --> MLXLLM
     AudiobookConfig --> KokoroTTS
+    AudiobookConfig --> ChatterboxTTS
     PodcastConfig --> DialogueConfig
     PodcastConfig --> OllamaLLM
     PodcastConfig --> MLXLLM
@@ -150,17 +154,17 @@ The PDF's embedded bookmarks (read via `PyMuPDF.get_toc()`) are the single sourc
 
 1. Classifies each bookmark as **front matter**, **back matter**, **preamble**, or **content** using regex patterns on the title
 2. Resolves the content page range (first preamble/content entry → last entry before back matter)
-3. Splits content into sections with page ranges via [`resolve_content_sections(max_level)`](../src/shared/pdf_parser/resolve_content.py)
+3. Splits content into sections with page ranges via [`resolve_content_sections(max_level)`](../../src/shared/pdf_parser/resolve_content.py)
 
 Markdown conversion then runs per-section (`pdf_to_markdown(path, pages=[start..end])`), so each section's content is extracted independently using the page range from the TOC.
 
 **Page boundary bleed**: Since PDF bookmarks point to pages (not byte offsets within a page), a page where a new chapter starts may also contain the last paragraph of the previous chapter. The previous section's page range ends one page *before* the bookmark, so that trailing content goes to the next section's markdown, not the previous one's. No post-processing trims this bleed — for a 10-30 page section, a few stray sentences at the boundary are negligible, and the downstream LLM naturally ignores or incorporates them as a transition.
 
-**Web URLs — heading-based splitting**: Web pages have no bookmark tree, so the pipeline uses a different strategy. The page is first downloaded and converted to markdown via [trafilatura](../src/shared/web_parser/fetch_url_content.py) rather than a generic HTML parser like BeautifulSoup. The distinction matters: BeautifulSoup parses the DOM but leaves you to figure out which `<div>` is the article versus the navbar, sidebar, footer, or cookie banner — logic that varies wildly per site. trafilatura is a *content extractor* — it identifies the main article body, strips boilerplate, and outputs clean markdown in one call. Once the markdown is extracted, [`split_by_headings(markdown, max_level=2)`](../src/shared/web_parser/split_by_headings.py) splits on `#` and `##` headings to produce sections. Text before the first heading becomes an "Introduction" section; if no headings are found at all, the entire article is returned as a single "Full article" section.
+**Web URLs — heading-based splitting**: Web pages have no bookmark tree, so the pipeline uses a different strategy. The page is first downloaded and converted to markdown via [trafilatura](../../src/shared/web_parser/fetch_url_content.py) rather than a generic HTML parser like BeautifulSoup. The distinction matters: BeautifulSoup parses the DOM but leaves you to figure out which `<div>` is the article versus the navbar, sidebar, footer, or cookie banner — logic that varies wildly per site. trafilatura is a *content extractor* — it identifies the main article body, strips boilerplate, and outputs clean markdown in one call. Once the markdown is extracted, [`split_by_headings(markdown, max_level=2)`](../../src/shared/web_parser/split_by_headings.py) splits on `#` and `##` headings to produce sections. Text before the first heading becomes an "Introduction" section; if no headings are found at all, the entire article is returned as a single "Full article" section.
 
 #### Configurable PDF backends
 
-Two backends behind a single [`pdf_to_markdown(path, backend=)`](../src/shared/pdf_parser/convert.py) interface:
+Two backends behind a single [`pdf_to_markdown(path, backend=)`](../../src/shared/pdf_parser/convert.py) interface:
 
 | Backend | Speed | Quality | GPU | License |
 |---|---|---|---|---|
@@ -173,7 +177,7 @@ Backends are lazy-imported — only the selected one is loaded.
 
 #### Unified LLM dispatch
 
-[`llm_generate(system, prompt, llm)`](../src/shared/providers/llm.py) dispatches on `isinstance(llm, ...)`:
+[`llm_generate(system, prompt, llm)`](../../src/shared/providers/llm.py) dispatches on `isinstance(llm, ...)`:
 
 - `OllamaLLM` → `requests.post` to local Ollama `/api/generate` (with preflight check, timeout, and retry)
 - `MLXLLM` → `mlx-lm` local inference on Apple Silicon (lazy-imported, model cached in memory)
@@ -206,7 +210,7 @@ This keeps prompt content editable without touching Python code — useful for i
 
 The Ollama integration includes three layers of protection for long pipeline runs (30+ LLM calls):
 
-1. **Preflight check** ([`ollama_preflight`](../src/shared/providers/llm.py)) — verifies Ollama is reachable and the model is pulled before any processing begins. Cached per `(url, model)` pair. Called at startup in both scripts.
+1. **Preflight check** ([`ollama_preflight`](../../src/shared/providers/llm.py)) — verifies Ollama is reachable and the model is pulled before any processing begins. Cached per `(url, model)` pair. Called at startup in both scripts.
 2. **Timeout** — configurable per-request timeout (default 600s / 10 min) to avoid hanging on unresponsive Ollama instances.
 3. **Retry with backoff** — 3 attempts with exponential backoff (4s, 16s) on connection errors, timeouts, and 5xx responses. 4xx errors fail immediately.
 
@@ -249,7 +253,7 @@ TTS rendering supports two runtimes with automatic detection:
 - **MLX** (Apple Silicon) — `mlx-audio` with Metal GPU acceleration
 - **PyTorch** (CUDA/ROCm/CPU) — `transformers` + `kokoro` PyPI package
 
-The runtime is selected by [`get_tts_runtime()`](../src/shared/providers/runtime.py): checks `TTS_RUNTIME` env var first, then auto-detects based on `mlx_audio` importability. Each renderer module ([`audiobook/render.py`](../src/audiobook/render.py), [`podcast/render.py`](../src/podcast/render.py)) uses `_get_backend()` to lazy-import the correct adapter (`_tts_mlx.py` or `_tts_torch.py`). All render logic (pause splitting, speaker parsing, chunk merging) is shared — only model loading and `generate()` calls differ.
+The runtime is selected by [`get_tts_runtime()`](../../src/shared/providers/runtime.py): checks `TTS_RUNTIME` env var first, then auto-detects based on `mlx_audio` importability. Each renderer module ([`audiobook/render.py`](../../src/audiobook/render.py), [`podcast/render.py`](../../src/podcast/render.py)) uses `_get_backend()` to lazy-import the correct adapter (`_tts_mlx.py` or `_tts_torch.py`). All render logic (pause splitting, speaker parsing, chunk merging) is shared — only model loading and `generate()` calls differ.
 
 #### Explicit model loading
 
