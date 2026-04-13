@@ -338,6 +338,60 @@ def heading_to_transition(title: str, level: int) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Inline enumeration → spoken ordinals
+# ---------------------------------------------------------------------------
+
+_ORDINALS = {
+    1: "first", 2: "second", 3: "third", 4: "fourth", 5: "fifth",
+    6: "sixth", 7: "seventh", 8: "eighth", 9: "ninth", 10: "tenth",
+}
+
+# Matches inline enumerations: "1)", "2)", "(1)", "(2)", "(a)", "(b)"
+# Must NOT be at the start of a line (those are list items handled by blocks.py).
+_INLINE_NUM_ENUM_RE = re.compile(
+    r"(?<=\s)"             # preceded by whitespace (inline, not line-start)
+    r"(?:"
+    r"\((\d{1,2})\)"       # (1), (2) — group 1
+    r"|(\d{1,2})\)"        # 1), 2)   — group 2
+    r")"
+)
+
+_INLINE_ALPHA_ENUM_RE = re.compile(
+    r"(?<=\s)"
+    r"\(([a-z])\)"         # (a), (b) — group 1
+)
+
+_ALPHA_ORDINALS = {
+    "a": "first", "b": "second", "c": "third", "d": "fourth", "e": "fifth",
+    "f": "sixth", "g": "seventh", "h": "eighth", "i": "ninth", "j": "tenth",
+}
+
+
+def inline_enum_to_spoken(text: str) -> str:
+    """Convert inline enumerations to spoken ordinals.
+
+    ``1)`` / ``(1)`` → "first,", ``2)`` / ``(2)`` → "second," etc.
+    ``(a)`` → "first,", ``(b)`` → "second," etc.
+    """
+    def _num_repl(m: re.Match) -> str:
+        n = int(m.group(1) or m.group(2))
+        word = _ORDINALS.get(n)
+        if word is None:
+            return m.group(0)  # 11+, leave as-is
+        return f"{word},"
+
+    def _alpha_repl(m: re.Match) -> str:
+        word = _ALPHA_ORDINALS.get(m.group(1))
+        if word is None:
+            return m.group(0)
+        return f"{word},"
+
+    text = _INLINE_NUM_ENUM_RE.sub(_num_repl, text)
+    text = _INLINE_ALPHA_ENUM_RE.sub(_alpha_repl, text)
+    return text
+
+
+# ---------------------------------------------------------------------------
 # Top-level preprocessing pipeline
 # ---------------------------------------------------------------------------
 
@@ -346,5 +400,6 @@ def preprocess_paragraph(text: str) -> str:
     """Full deterministic pipeline for a paragraph block."""
     text = strip_markdown(text)
     text = expand_abbreviations(text)
+    text = inline_enum_to_spoken(text)
     text = number_to_spoken(text)
     return text
