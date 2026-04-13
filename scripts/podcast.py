@@ -468,3 +468,19 @@ else:
     elapsed = time.time() - t0
     print(f"Assembly completed in {fmt_time(elapsed)}")
     print(f"\nPodcast saved to {final_output}")
+
+
+# =============================================================================
+# Cleanup: release TTS model before Python's GC runs
+# =============================================================================
+# MLX/Metal GPU resources segfault if destroyed in arbitrary GC order at exit.
+# Explicitly deleting the model and clearing the MLX cache prevents this.
+
+del tts_model
+del audio_segments
+
+try:
+    import mlx.core as mx
+    mx.metal.clear_cache()
+except Exception:
+    pass
