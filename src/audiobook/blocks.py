@@ -13,6 +13,7 @@ _METADATA_RE = re.compile(
     r"\bDOI\b|"
     r"10\.\d{4,}/|"                     # DOI prefix
     r"ACM Reference|"
+    r"IEEE\b.{0,30}$|"                  # IEEE attributions
     r"CCS Concepts|"
     r"\bISBN\b|"
     r"\bISSN\b|"
@@ -21,6 +22,9 @@ _METADATA_RE = re.compile(
     r"^Keywords:|"
     r"Creative Commons|"
     r"This work is licensed|"
+    r"Proceedings of\b|"                # conference proceedings
+    r"\bet al\.\s*$|"                   # running header ending "et al."
+    r"Received .{0,30}; revised|"       # submission history lines
     r"^\[https?://|"                    # bare link lines
     r"^https?://\S+$"                   # bare URL lines
     r")"
@@ -31,7 +35,10 @@ _AUTHOR_LINE_RE = re.compile(
     r"[A-Za-z.]+@[A-Za-z.]+\.\w{2,}|"  # email
     r"\bUniversity\b|"
     r"\bInstitute\b|"
-    r"\bResearch\b.{0,20}$|"           # "Microsoft Research" at end of line
+    # NOTE: "Research" was removed — too many false positives on content
+    # (e.g. "Much research on" matched via IGNORECASE).  Institution names
+    # like "Microsoft Research" are captured via metadata continuation
+    # when preceded by a strong signal (ORCID, email).
     r"\bORCID\b|"
     r"orcid\.org"
     r")",
@@ -158,8 +165,19 @@ def split_into_blocks(content: str) -> list[Block]:
             i += 1
             continue
         if state == "metadata":
-            # Check if this looks like a continuation (short line after metadata)
-            if len(line.strip()) < 80 and _is_metadata_line(line):
+            # Once we've entered metadata via a strong signal (ORCID, DOI,
+            # email, copyright …), short non-structural lines are almost
+            # certainly still part of the same block — e.g. city/country in
+            # author affiliations, conference venue details, name lists.
+            # Blank lines (handled above) remain the primary boundary.
+            stripped = line.strip()
+            if (
+                len(stripped) < 80
+                and not re.match(r"^#{1,6}\s+", stripped)
+                and not stripped.startswith("|")
+                and not stripped.startswith("```")
+                and not _LIST_ITEM_RE.match(stripped)
+            ):
                 buf.append(line)
                 i += 1
                 continue
