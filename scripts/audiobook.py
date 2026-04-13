@@ -106,50 +106,84 @@ print(f"Context budget: {pipeline.context_budget:,} tokens per section")
 # =============================================================================
 
 
-def _trim_shared_page(md: str, current_title: str, next_title: str | None) -> str:
-    """Trim extracted markdown when two sections share the same page(s).
+def _title_patterns(title: str) -> list[re.Pattern[str]]:
+    """Build regex patterns that match a section title in extracted markdown.
 
-    When consecutive TOC entries fall on the same page, pdf_to_markdown
-    extracts the entire page for both.  This function keeps only the
-    portion belonging to *current_title* by cutting at the heading that
-    marks the start of *next_title*.
+    Handles numbered headings (``**3.1** **Survey Design**``),
+    markdown headings (``## 3.1 Survey Design``), and plain bold titles.
     """
-    if next_title is None:
-        return md
-
-    # Extract the leading section number (e.g. "6.1" from "6.1 Implications...")
-    # and the first few significant words for matching.
-    num_match = re.match(r"^([\d.]+)\s+(.*)", next_title)
+    num_match = re.match(r"^([\d.]+)\s+(.*)", title)
     if num_match:
         sec_num = num_match.group(1)
         words = num_match.group(2).split()[:4]
-        title_start = r"\s+".join(re.escape(w) for w in words)
     else:
         sec_num = None
-        words = next_title.split()[:4]
-        title_start = r"\s+".join(re.escape(w) for w in words)
+        words = title.split()[:4]
 
-    patterns = []
+    title_start = r"\s+".join(re.escape(w) for w in words)
+
+    patterns: list[re.Pattern[str]] = []
     if sec_num:
         esc_num = re.escape(sec_num)
         patterns.append(re.compile(
             rf"^\**{esc_num}\**\s+\**{title_start}", re.MULTILINE
         ))
         patterns.append(re.compile(
-            rf"^#{1,6}\s+{esc_num}\s+{title_start}", re.MULTILINE
+            rf"^#{{1,6}}\s+{esc_num}\s+{title_start}", re.MULTILINE
         ))
-    patterns.append(re.compile(rf"^#{1,6}\s+\**{title_start}", re.MULTILINE))
+    patterns.append(re.compile(rf"^#{{1,6}}\s+\**{title_start}", re.MULTILINE))
     patterns.append(re.compile(rf"^\**{title_start}\**\s*$", re.MULTILINE))
+    return patterns
 
-    earliest = len(md)
-    for pat in patterns:
+
+def _find_title(md: str, title: str) -> int | None:
+    """Return the character offset where *title* first appears, or ``None``."""
+    earliest: int | None = None
+    for pat in _title_patterns(title):
         m = pat.search(md)
-        if m and m.start() < earliest:
+        if m and (earliest is None or m.start() < earliest):
             earliest = m.start()
+    return earliest
 
-    if earliest < len(md):
-        return md[:earliest].strip()
-    return md
+
+def _trim_shared_page(md: str, current_title: str, next_title: str | None) -> str:
+    """Trim extracted markdown so only *current_title*'s content remains.
+
+    When consecutive TOC entries share the same page(s), pdf_to_markdown
+    extracts the full page for each section.  This function:
+
+    1. **Begin-trim** — finds *current_title*'s heading and discards
+       everything before it (content belonging to earlier sections on
+       the same start page).
+    2. **End-trim** — finds *next_title*'s heading and discards everything
+       from that point on (content belonging to later sections on the
+       same end page).
+    """
+    # ── Begin-trim: discard content before this section's heading ──
+    pos = _find_title(md, current_title)
+    if pos is not None and pos > 0:
+        # Skip past the heading line (and any continuation bold lines)
+        nl = md.find("\n", pos)
+        if nl == -1:
+            md = ""
+        else:
+            rest = md[nl + 1:]
+            # Multi-line bold headings: skip continuation lines starting with **
+            while rest.startswith("**"):
+                next_nl = rest.find("\n")
+                if next_nl == -1:
+                    rest = ""
+                    break
+                rest = rest[next_nl + 1:]
+            md = rest.lstrip("\n")
+
+    # ── End-trim: discard content after the next section's heading ──
+    if next_title is not None:
+        pos = _find_title(md, next_title)
+        if pos is not None:
+            md = md[:pos]
+
+    return md.strip()
 
 
 # =============================================================================
@@ -326,3 +360,19 @@ assemble_audiobook(
 elapsed = time.time() - t0
 print(f"Assembly completed in {fmt_time(elapsed)}")
 print(f"\nAudiobook saved to {final_output}")
+
+
+# =============================================================================
+# Cleanup: release TTS model before Python's GC runs
+# =============================================================================
+# MLX/Metal GPU resources segfault if destroyed in arbitrary GC order at exit.
+# Explicitly deleting the model and clearing the MLX cache prevents this.
+
+del tts_model
+del audio_segments
+
+try:
+    import mlx.core as mx
+    mx.metal.clear_cache()
+except Exception:
+    pass
